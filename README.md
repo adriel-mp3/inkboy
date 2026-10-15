@@ -67,6 +67,29 @@ can restore the previous framebuffer state on normal exit. Hardware visual
 verification of the Stage 2 duck screen and restoration after termination is
 complete.
 
+## Experiment status
+
+Stage 5.2 is complete. The standalone SameBoy Libretro probe was executed on
+a physical Kindle Paperwhite 5 running firmware 5.19.2 with a Pokémon Yellow
+`.gb` ROM. SameBoy loaded successfully and ran 60 frames using XRGB8888 at
+`160x144`, with a `640`-byte pitch, `1.789940` seconds of execution time, and
+`4092 KiB` maximum RSS. See
+[docs/experiments/05-libretro-probe.md](docs/experiments/05-libretro-probe.md).
+
+This result validates ARM core loading and emulation execution only. The
+Stage 5.2 probe discards video frames and does not render them through FBInk
+or perform an e-ink refresh. Stage 5.3 is complete: its independent
+frame-display probe captured a post-warmup XRGB8888 frame, converted it to
+grayscale/YA, and displayed the Nintendo boot logo on the physical PW5 through
+FBInk before normal restoration. Its implementation, physical verification,
+and deployment commands are documented in
+[docs/experiments/05.3-libretro-frame.md](docs/experiments/05.3-libretro-frame.md).
+
+Stage 5.4 is research-only. It covers controlled continuous rendering,
+frame/display decoupling, refresh scheduling, waveform selection, ghosting,
+and safe shutdown without changing the existing InkBoy interface. See
+[docs/experiments/05.4-libretro-continuous-rendering.md](docs/experiments/05.4-libretro-continuous-rendering.md).
+
 ## Development workflow
 
 Commit messages use Conventional Commits and releases use annotated semantic

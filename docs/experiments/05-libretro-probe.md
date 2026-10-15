@@ -46,6 +46,24 @@ does not convert or otherwise interpret the discarded pixels. Output includes
 API version, core name/version, negotiated format, dimensions, actual video
 pitch, frame count, elapsed time, and maximum RSS when the host exposes it.
 
+## Physical PW5 validation — complete
+
+The ARM probe was executed successfully on a physical Kindle Paperwhite 5
+(11th generation), firmware 5.19.2, using the pinned SameBoy core and a
+Pokémon Yellow `.gb` ROM:
+
+```text
+device=Kindle Paperwhite 5 firmware=5.19.2
+api=1 name=SameBoy version=1.0.4 61792ed
+format=XRGB8888 dimensions=160x144 pitch=640 frames=60
+seconds=1.789940 rss_kib=4092 status=ok
+```
+
+This confirms ARM loading, Libretro negotiation, ROM loading, and finite core
+execution on the PW5. It does not confirm screen rendering: this probe has no
+FBInk integration, its video callback only observes and discards the frame,
+and the test did not perform an e-ink refresh.
+
 ## ARMv7 and deployment
 
 The ARM target uses SameBoy's existing `unix-armv7-hardfloat-neon` profile.
@@ -85,4 +103,6 @@ nm -D build/libretro_probe
 `build/libretro-probe-deploy`; it does not alter the existing `bin/deploy`
 flow or the Kindle root filesystem. A physical PW5 execution requires an
 externally supplied homebrew/test ROM and must report the complete probe line.
-No Kindle result is claimed by this repository without that evidence.
+The physical result above closes Stage 5.2. Stage 5.3 is a separate
+single-frame FBInk experiment documented in
+`docs/experiments/05.3-libretro-frame.md`; it does not change this probe.
