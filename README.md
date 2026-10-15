@@ -99,6 +99,8 @@ tagging steps are manual for now.
 
 ## Compatibility
 
+See [docs/decisions.md](docs/decisions.md) for the short architectural
+decision summary.
 See [docs/compatibility.md](docs/compatibility.md) for the PW5 ABI and known
 v0.0.2 blockers. See
 [docs/experiments/02-rendering.md](docs/experiments/02-rendering.md) for the
