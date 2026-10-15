@@ -1,7 +1,7 @@
 # TASK-001 — Repeat instrumented PW5 performance baseline
 
 - Milestone: M4 — Continuous rendering and performance research
-- Status: Planned
+- Status: Complete
 - Dependencies: None; coordinate physical Kindle access and deployment
 
 ## Objective
@@ -40,3 +40,10 @@ then run the documented physical benchmark protocol and retain its output.
 
 - [`05.4 — Controlled continuous Libretro rendering research`](../experiments/05.4-libretro-continuous-rendering.md)
 - The documented single-threaded rendering and conservative 1 FPS decisions
+
+## Completion
+
+The host capture-only run, ARM artifact inspection, and physical PW5 baseline
+were completed. The physical run used the approved 10-second duration, 1 FPS
+display rate, 180 warmup frames, smooth scaling default, and `WFM_AUTO`.
+Results are recorded in the related experiment.
