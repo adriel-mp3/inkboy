@@ -55,7 +55,7 @@ The isolated setup uses:
 - Make, GCC/binutils, pkg-config, GTK2 development headers, Git, curl/wget,
   aria2, and the SDK's archive/mount utilities
 
-No emulator, QEMU setup, or device-side compiler is included in v0.1.
+No emulator, QEMU setup, or device-side compiler is included in v0.0.2.
 
 ## Compatibility blockers
 
@@ -68,7 +68,7 @@ No emulator, QEMU setup, or device-side compiler is included in v0.1.
    not a framebuffer or emulator application; it assumes the normal GUI
    session is available when KPM launches it.
 3. KPM packaging/launcher metadata is intentionally not part of this
-   milestone. The raw executable is the v0.1 artifact; packaging and a device
+   milestone. The raw executable is the v0.0.2 artifact; packaging and a device
    launch script can be added after hardware validation.
 
 ## References

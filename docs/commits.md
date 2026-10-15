@@ -40,8 +40,8 @@ in separate commits.
 Create annotated tags using `vMAJOR.MINOR.PATCH`:
 
 ```sh
-git tag -a v0.1.0 -m "Release v0.1.0"
-git push origin v0.1.0
+git tag -a v0.0.2 -m "Release v0.0.2"
+git push origin v0.0.2
 ```
 
 Until the first stable release:
@@ -51,6 +51,6 @@ Until the first stable release:
 - increment `MAJOR` only when the project deliberately moves to a breaking
   release line.
 
-The initial InkBoy v0.1 release is `v0.1.0`. Tags should point to a reviewed
+The initial InkBoy release is `v0.0.2`. Tags should point to a reviewed
 commit that has passed the relevant build or device validation. Pushing a tag
 is a separate manual action and requires explicit authorization.

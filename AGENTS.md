@@ -24,7 +24,7 @@ Do not amend, rebase, reset, or push unless the user explicitly requests it.
 
 ## Version tags
 
-Use annotated `vMAJOR.MINOR.PATCH` tags. The initial v0 release is expected to
-use `v0.1.0`; later compatible features increment the minor version and fixes
+Use annotated `vMAJOR.MINOR.PATCH` tags. The initial published release is
+`v0.0.2`; later compatible features increment the minor version and fixes
 increment the patch version. Create and push tags manually when a release is
 requested. No release automation is required at this stage.

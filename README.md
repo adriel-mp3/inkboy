@@ -1,4 +1,4 @@
-# InkBoy v0.1
+# InkBoy v0.0.2
 
 Minimal native GTK2 application for a jailbroken Kindle Paperwhite 5.
 
@@ -73,4 +73,4 @@ tagging steps are manual for now.
 ## Compatibility
 
 See [docs/compatibility.md](docs/compatibility.md) for the PW5 ABI, GTK2
-runtime dependencies, and known v0.1 blockers.
+runtime dependencies, and known v0.0.2 blockers.
