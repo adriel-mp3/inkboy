@@ -14,6 +14,14 @@ KINDLE_CC   ?= $(KINDLE_TC)/bin/arm-kindlehf-linux-gnueabihf-gcc
 
 COMMON_CFLAGS := -std=c11 -Wall -Wextra -Wpedantic -O2
 SOURCE        := src/main.c
+LIBRETRO_PROBE_SOURCE := tools/libretro_probe.c
+SAMEBOY_DIR   := third_party/sameboy
+SAMEBOY_CORE_HOST := build/sameboy/sameboy_libretro.so
+SAMEBOY_CORE_KINDLE := build/sameboy-kindle/sameboy_libretro.so
+SAMEBOY_WORK_HOST := build/sameboy-work-host
+SAMEBOY_WORK_KINDLE := build/sameboy-work-kindle
+LIBRETRO_PROBE_HOST := build/libretro_probe-host
+LIBRETRO_PROBE_KINDLE := build/libretro_probe
 TOUCH_PROBE_SOURCE := tools/touch_probe.c
 ASSET_HEADER  := src/duck_bitmap.h
 ASSET_TOOL    := build/svg_to_bitmap
@@ -33,7 +41,7 @@ FBINK_CPPFLAGS := -I$(FBINK_DIR) -D_REENTRANT=1 -D_GNU_SOURCE \
 	-DFBINK_MINIMAL -DFBINK_WITH_IMAGE -DFBINK_WITH_DRAW \
 	-DFBINK_VERSION=\"$(FBINK_VERSION)\"
 
-.PHONY: all docker-image bootstrap docker-build host touch-probe asset clean inspect
+.PHONY: all docker-image bootstrap docker-build host touch-probe asset sameboy-core-host sameboy-core-kindle libretro-probe-host libretro-probe-kindle deploy-libretro-probe clean inspect
 
 # The default is deliberately the isolated Kindle build. It will stop with a
 # useful message until a Kindle SDK/sysroot has been bootstrapped.
@@ -59,14 +67,53 @@ docker-build: docker-image
 		--workdir /workspace \
 		$(IMAGE) make TARGET=kindle KINDLE_TC=$(KINDLE_TC) \
 		KINDLE_SYSROOT=$(KINDLE_SYSROOT) KINDLE_CC=$(KINDLE_CC) \
-		build/$(PROJECT) build/touch_probe
+		build/$(PROJECT) build/touch_probe build/libretro_probe
 
 # A host build is only a source/UI smoke test. It does not establish Kindle
 # ABI or runtime compatibility.
 host: docker-image
 	$(DOCKER_ENV) $(DOCKER) run --rm --user "$$(id -u):$$(id -g)" \
 		--volume "$(ROOT_DIR):/workspace" --workdir /workspace \
-		$(IMAGE) make TARGET=host build/$(PROJECT)-host build/touch_probe-host
+		$(IMAGE) make TARGET=host build/$(PROJECT)-host build/touch_probe-host build/libretro_probe-host
+
+sameboy-core-host: $(SAMEBOY_CORE_HOST)
+
+$(SAMEBOY_CORE_HOST):
+	@rm -rf $(SAMEBOY_WORK_HOST)
+	@mkdir -p $(dir $(SAMEBOY_WORK_HOST))
+	cp -a $(SAMEBOY_DIR)/. $(SAMEBOY_WORK_HOST)/
+	@rm -rf $(SAMEBOY_WORK_HOST)/build $(SAMEBOY_WORK_HOST)/.git
+	$(MAKE) -C $(SAMEBOY_WORK_HOST) bootroms BIN=$(abspath build/sameboy-work-host)
+	$(MAKE) MAKEOVERRIDES= -C $(SAMEBOY_WORK_HOST) libretro platform=unix CC="$(HOST_CC)" BIN=$(abspath build/sameboy-work-host)
+	@mkdir -p $(dir $@)
+	cp $(SAMEBOY_WORK_HOST)/sameboy_libretro.so $@
+
+sameboy-core-kindle: $(SAMEBOY_CORE_KINDLE)
+
+$(SAMEBOY_CORE_KINDLE):
+	@rm -rf $(SAMEBOY_WORK_KINDLE)
+	@mkdir -p $(dir $(SAMEBOY_WORK_KINDLE))
+	cp -a $(SAMEBOY_DIR)/. $(SAMEBOY_WORK_KINDLE)/
+	@rm -rf $(SAMEBOY_WORK_KINDLE)/build $(SAMEBOY_WORK_KINDLE)/.git
+	$(MAKE) -C $(SAMEBOY_WORK_KINDLE) bootroms BIN=$(abspath build/sameboy-work-kindle)
+	$(MAKE) MAKEOVERRIDES= -C $(SAMEBOY_WORK_KINDLE) libretro platform=unix-armv7-hardfloat-neon CC="$(KINDLE_CC)" AR="$(KINDLE_TC)/bin/arm-kindlehf-linux-gnueabihf-ar" BIN=$(abspath build/sameboy-work-kindle)
+	@mkdir -p $(dir $@)
+	cp $(SAMEBOY_WORK_KINDLE)/sameboy_libretro.so $@
+
+$(LIBRETRO_PROBE_HOST): $(LIBRETRO_PROBE_SOURCE) $(SAMEBOY_CORE_HOST)
+	@mkdir -p $(BUILD_DIR)
+	$(HOST_CC) $(COMMON_CFLAGS) -I$(SAMEBOY_DIR)/libretro $< -ldl -o $@
+
+$(LIBRETRO_PROBE_KINDLE): $(LIBRETRO_PROBE_SOURCE) $(SAMEBOY_CORE_KINDLE)
+	@mkdir -p $(BUILD_DIR)
+	$(KINDLE_CC) $(COMMON_CFLAGS) -I$(SAMEBOY_DIR)/libretro $< -ldl -o $@
+
+libretro-probe-host: $(LIBRETRO_PROBE_HOST)
+libretro-probe-kindle: $(LIBRETRO_PROBE_KINDLE)
+
+deploy-libretro-probe: libretro-probe-kindle
+	@mkdir -p build/libretro-probe-deploy
+	cp $(LIBRETRO_PROBE_KINDLE) $(SAMEBOY_CORE_KINDLE) build/libretro-probe-deploy/
 
 asset: $(ASSET_HEADER)
 
