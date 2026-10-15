@@ -1,0 +1,32 @@
+#!/bin/sh
+set -eu
+
+toolchain_root=/opt/x-tools
+toolchain_dir="$toolchain_root/arm-kindlehf-linux-gnueabihf"
+sdk_dir=/opt/kindle-sdk
+
+mkdir -p "$toolchain_root"
+
+if [ ! -x "$toolchain_dir/bin/arm-kindlehf-linux-gnueabihf-gcc" ]; then
+    echo "[*] Downloading the prebuilt KindleHF toolchain"
+    wget -qO- \
+        https://github.com/KindleModding/koxtoolchain/releases/latest/download/kindlehf.tar.gz \
+        | tar -xzf - -C /opt
+fi
+
+if [ ! -x "$toolchain_dir/bin/arm-kindlehf-linux-gnueabihf-gcc" ]; then
+    echo "[!] The toolchain archive did not create $toolchain_dir" >&2
+    exit 1
+fi
+
+if [ ! -x "$sdk_dir/gen-sdk.sh" ]; then
+    echo "[*] Cloning the Kindle SDK"
+    sdk_tmp=/tmp/kindle-sdk
+    rm -rf "$sdk_tmp"
+    git clone --recursive --depth=1 \
+        https://github.com/KindleModding/kindle-sdk.git "$sdk_tmp"
+    cp -a "$sdk_tmp/." "$sdk_dir/"
+fi
+
+echo "[*] Building the KindleHF sysroot from the SDK firmware baseline"
+"$sdk_dir/gen-sdk.sh" kindlehf "$toolchain_dir"
