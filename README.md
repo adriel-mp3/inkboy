@@ -74,3 +74,10 @@ tagging steps are manual for now.
 
 See [docs/compatibility.md](docs/compatibility.md) for the PW5 ABI, GTK2
 runtime dependencies, and known v0.0.2 blockers.
+
+## License
+
+InkBoy is licensed under GNU GPL-3.0-only. See [LICENSE](LICENSE) for the
+complete license text. Gambatte-K2 is used only as a technical reference for
+Kindle rendering and input; InkBoy does not include its emulator or game
+engine.

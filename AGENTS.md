@@ -1,5 +1,19 @@
 # InkBoy contribution instructions
 
+## Persistent project decisions
+
+- InkBoy is an independent C application, not a Gambatte-K2 fork, frontend, or
+  emulator. Gambatte-K2 is a technical reference only; do not copy its source.
+- The project targets the Kindle Paperwhite 5 (11th generation), firmware
+  5.19.2, and must preserve the existing cross-compilation and deployment flow.
+- Stage 2 research targets the original adriel.cloud duck SVG and the text
+  `InkBoy` in a restrained monochrome e-ink composition. Do not invent a
+  replacement mascot when the original asset is unavailable.
+- Prefer the smallest C rendering path with minimal dependencies. Do not
+  modify the Kindle root filesystem or implement an emulator at this stage.
+- InkBoy uses GNU GPL-3.0-only. Preserve third-party notices and check
+  compatibility before reusing code or assets.
+
 ## Commits
 
 When the user asks for commits, use the Conventional Commits format described
