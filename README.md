@@ -1,4 +1,4 @@
-# InkBoy v0.0.2
+# InkBoy
 
 Minimal native C application for a jailbroken Kindle Paperwhite 5.
 
@@ -92,17 +92,15 @@ and safe shutdown without changing the existing InkBoy interface. See
 
 ## Development workflow
 
-Commit messages use Conventional Commits and releases use annotated semantic
-version tags. See [AGENTS.md](AGENTS.md) for repository instructions and
-[docs/commits.md](docs/commits.md) for the complete convention. Release and
-tagging steps are manual for now.
+See [AGENTS.md](AGENTS.md) and [docs/commits.md](docs/commits.md) for the
+project contribution and commit conventions.
 
 ## Compatibility
 
 See [docs/decisions.md](docs/decisions.md) for the short architectural
 decision summary.
 See [docs/compatibility.md](docs/compatibility.md) for the PW5 ABI and known
-v0.0.2 blockers. See
+compatibility blockers. See
 [docs/experiments/02-rendering.md](docs/experiments/02-rendering.md) for the
 FBInk dependency, refresh strategy, and hardware-test status. The rationale
 for vendoring FBInk is recorded in
