@@ -14,8 +14,25 @@ KINDLE_CC   ?= $(KINDLE_TC)/bin/arm-kindlehf-linux-gnueabihf-gcc
 
 COMMON_CFLAGS := -std=c11 -Wall -Wextra -Wpedantic -O2
 SOURCE        := src/main.c
+ASSET_HEADER  := src/duck_bitmap.h
+ASSET_TOOL    := build/svg_to_bitmap
+FBINK_DIR     := third_party/fbink
+FBINK_VERSION := 886f25f
+FBINK_SOURCES := fbink.c cutef8/utf8.c cutef8/dfa.c qimagescale/qimagescale.c
+FBINK_OBJECTS := $(addprefix build/fbink/$(TARGET)/,$(FBINK_SOURCES:.c=.o))
+HOST_CC       ?= gcc
+AR            ?= ar
+RANLIB        ?= ranlib
 
-.PHONY: all docker-image bootstrap docker-build host clean inspect
+FBINK_CFLAGS  := -std=c11 -O2 -fno-semantic-interposition -ftree-vectorize \
+	-funroll-loops -fno-common -fPIC -Wno-unused-function \
+	-Wno-format -Wno-format-signedness -Wno-sign-conversion \
+	-Wno-cast-align -Wno-conversion
+FBINK_CPPFLAGS := -I$(FBINK_DIR) -D_REENTRANT=1 -D_GNU_SOURCE \
+	-DFBINK_MINIMAL -DFBINK_WITH_IMAGE -DFBINK_WITH_DRAW \
+	-DFBINK_VERSION=\"$(FBINK_VERSION)\"
+
+.PHONY: all docker-image bootstrap docker-build host asset clean inspect
 
 # The default is deliberately the isolated Kindle build. It will stop with a
 # useful message until a Kindle SDK/sysroot has been bootstrapped.
@@ -50,31 +67,41 @@ host: docker-image
 		--volume "$(ROOT_DIR):/workspace" --workdir /workspace \
 		$(IMAGE) make TARGET=host build/$(PROJECT)-host
 
+asset: $(ASSET_HEADER)
+
+$(ASSET_TOOL): tools/svg_to_bitmap.c
+	@mkdir -p $(dir $@)
+	$(HOST_CC) -std=c11 -Wall -Wextra -Wpedantic \
+		$$(pkg-config --cflags cairo gobject-2.0) $< \
+		$$(pkg-config --libs cairo gobject-2.0) -ldl -o $@
+
+$(ASSET_HEADER): assets/duck.svg $(ASSET_TOOL)
+	$(ASSET_TOOL) $< $@ 256 256
+
 ifeq ($(TARGET),host)
 CC           := gcc
-PKG_ENV      := PKG_CONFIG_PATH= PKG_CONFIG_SYSROOT_DIR=
-GTK_CFLAGS   := $(shell $(PKG_ENV) pkg-config --cflags gtk+-2.0 2>/dev/null)
-GTK_LIBS     := $(shell $(PKG_ENV) pkg-config --libs gtk+-2.0 2>/dev/null)
-OUTPUT       := $(BUILD_DIR)/$(PROJECT)-host
+OUTPUT       := build/$(PROJECT)-host
+FBINK_PLATFORM := -DFBINK_FOR_LINUX
 else
 CC           := $(KINDLE_CC)
-PKG_ENV      := PKG_CONFIG_PATH= PKG_CONFIG_LIBDIR=$(KINDLE_SYSROOT)/usr/lib/pkgconfig:$(KINDLE_SYSROOT)/usr/share/pkgconfig PKG_CONFIG_SYSROOT_DIR=$(KINDLE_SYSROOT)
-GTK_CFLAGS   := $(shell $(PKG_ENV) pkg-config --cflags gtk+-2.0 2>/dev/null)
-GTK_LIBS     := $(shell $(PKG_ENV) pkg-config --libs gtk+-2.0 2>/dev/null)
-OUTPUT       := $(BUILD_DIR)/$(PROJECT)
+OUTPUT       := build/$(PROJECT)
+FBINK_PLATFORM := -DFBINK_FOR_KINDLE
 endif
 
-build/$(PROJECT): $(SOURCE)
-	@mkdir -p $(BUILD_DIR)
-	@test -n "$(GTK_CFLAGS)" -a -n "$(GTK_LIBS)" || \
-		(echo "GTK2 was not found in the selected Kindle sysroot." >&2; exit 2)
-	$(CC) $(COMMON_CFLAGS) $(GTK_CFLAGS) $< $(GTK_LIBS) -o $@
+build/fbink/$(TARGET)/%.o: $(FBINK_DIR)/%.c
+	@mkdir -p $(dir $@)
+	$(CC) $(FBINK_CPPFLAGS) $(FBINK_PLATFORM) $(FBINK_CFLAGS) \
+		-c $< -o $@
 
-build/$(PROJECT)-host: $(SOURCE)
+build/libfbink-$(TARGET).a: $(FBINK_OBJECTS)
+	@mkdir -p $(dir $@)
+	$(AR) rcs $@ $^
+	$(RANLIB) $@
+
+$(OUTPUT): $(SOURCE) $(ASSET_HEADER) build/libfbink-$(TARGET).a
 	@mkdir -p $(BUILD_DIR)
-	@test -n "$(GTK_CFLAGS)" -a -n "$(GTK_LIBS)" || \
-		(echo "GTK2 development files were not found in the build image." >&2; exit 2)
-	$(CC) $(COMMON_CFLAGS) $(GTK_CFLAGS) $< $(GTK_LIBS) -o $@
+	$(CC) $(COMMON_CFLAGS) -D_POSIX_C_SOURCE=200809L -Isrc -I$(FBINK_DIR) $(SOURCE) \
+		build/libfbink-$(TARGET).a -o $@
 
 inspect: build/$(PROJECT)
 	file build/$(PROJECT)

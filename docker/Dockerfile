@@ -12,6 +12,7 @@ RUN apt-get update \
         git \
         libarchive-dev \
         libgtk2.0-dev \
+        librsvg2-2 \
         libncurses-dev \
         nettle-dev \
         pkg-config \
