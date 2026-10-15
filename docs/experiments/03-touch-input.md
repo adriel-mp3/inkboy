@@ -1,9 +1,9 @@
 # Stage 3 — Touch input research
 
-Status: the standalone `touch_probe` utility is implemented and compiles
-locally. It has now been executed on the physical PW5 and identified the
-touchscreen evdev device; corner calibration and clean-exit evidence are still
-being collected.
+Status: the standalone `touch_probe` utility is implemented, compiles locally,
+and has been verified on the physical PW5. The user confirmed the corner
+calibration, event handling, coexistence with the Kindle interface, and clean
+shutdown checks described below.
 
 ## Scope and evidence
 
@@ -311,10 +311,9 @@ Implementation details:
 
 Local validation passed with `make TARGET=host build/inkboy-host
 build/touch_probe-host`, `bash -n bin/deploy`, and `git diff --check`. Running
-the host probe found no `/dev/input` directory, so it produced no touchscreen,
-axis, calibration, or orientation evidence. The Kindle build remains wired
-through the existing Docker/cross-compilation command and must be run before
-deployment.
+the host probe found no `/dev/input` directory, so it produced no touchscreen
+evidence locally. The Kindle build and deployment were subsequently run on the
+target, where the probe identified the touchscreen and produced touch events.
 
 ## Initial physical PW5 evidence
 
@@ -357,11 +356,16 @@ firmware 5.19.2. The verified device facts are:
   state table to 16 slots; and
 - current tested display transform: 1236×1648, orientation `0`.
 
-The matching axis ranges strongly support the default unrotated mapping. A
-four-corner test is still required before recording that no inversion, axis
-swap, or offset exists.
+The matching axis ranges strongly support the default unrotated mapping. The
+user subsequently confirmed the four-corner test, with no inversion, axis swap,
+or offset observed.
 
-The smallest hardware validation procedure is:
+The user also confirmed that press, movement, and release handling worked
+while the Kindle interface was open, that the probe did not interfere with the
+normal interface, and that stopping the process completed cleanly. The
+existing FBInk rendering and restoration behavior remained unchanged.
+
+The hardware validation procedure used was:
 
 1. On the PW5, list `/dev/input/event*`, `/sys/class/input/event*/device/name`,
    and permissions without changing any device state.
@@ -377,15 +381,14 @@ The smallest hardware validation procedure is:
    no Kindle UI behavior was changed, and the existing FBInk renderer still
    saves, refreshes, and restores exactly as before.
 
-The probe now provides the first target evidence. Before integrating its reader
-with InkBoy navigation, complete the corner and clean-exit checks above. The
-following milestone can then add a touch hit test for a rendered `START`
-button; it should remain a separate change from this probe implementation.
+The probe now provides verified target evidence. The following milestone can
+add a touch hit test for a rendered `START` button; it should remain a separate
+change from this probe implementation.
 
 ## Hardware verification checklist
 
-Touchscreen compatibility is **not verified** by this document. Before making
-that claim, record on the physical PW5 running firmware 5.19.2:
+Touchscreen compatibility is verified for the tested PW5 running firmware
+5.19.2. The completed checks are:
 
 - the selected `/dev/input/eventX` path and stable device name;
 - the permissions available to the deployed InkBoy process;
@@ -397,6 +400,7 @@ that claim, record on the physical PW5 running firmware 5.19.2:
 - clean exit and descriptor closure after Ctrl-C and `SIGTERM`; and
 - unchanged Stage 2 rendering and normal framebuffer restoration.
 
-Until the remaining observations exist, the correct project statement is that
-InkBoy has an implemented evdev probe with partial PW5 evidence, not fully
-verified touchscreen compatibility.
+The correct project statement is that InkBoy has a standalone evdev probe with
+verified touchscreen input on the tested PW5. This does not imply that event
+numbering or calibration is identical on other Kindle models or firmware
+versions.
