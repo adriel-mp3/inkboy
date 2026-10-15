@@ -67,28 +67,24 @@ can restore the previous framebuffer state on normal exit. Hardware visual
 verification of the Stage 2 duck screen and restoration after termination is
 complete.
 
-## Experiment status
+## Stage 5.4 benchmark status
 
-Stage 5.2 is complete. The standalone SameBoy Libretro probe was executed on
-a physical Kindle Paperwhite 5 running firmware 5.19.2 with a Pokémon Yellow
-`.gb` ROM. SameBoy loaded successfully and ran 60 frames using XRGB8888 at
-`160x144`, with a `640`-byte pitch, `1.789940` seconds of execution time, and
-`4092 KiB` maximum RSS. See
-[docs/experiments/05-libretro-probe.md](docs/experiments/05-libretro-probe.md).
+Stage 5.4.4 is complete and physically validated on a Kindle Paperwhite 5
+running firmware 5.19.2 with SameBoy 1.0.4 and Pokémon Yellow. The optimized
+nearest-neighbor scaler reduced measured scaling time from 186.221 ms to
+23.140 ms, approximately 87.6%; combined scaling and FBInk draw cost fell
+from approximately 207.167 ms to 44.108 ms, approximately 78.7%.
+All nearest-mode runs rendered successfully with zero refresh failures and
+successful screen restoration. The user preferred nearest visually for its
+pixelated Game Boy appearance. Smooth remains the CLI default pending final
+confirmation of a future default switch. Full results and decisions are
+recorded in [the Stage 5.4 experiment](docs/experiments/05.4-libretro-continuous-rendering.md).
 
-This result validates ARM core loading and emulation execution only. The
-Stage 5.2 probe discards video frames and does not render them through FBInk
-or perform an e-ink refresh. Stage 5.3 is complete: its independent
-frame-display probe captured a post-warmup XRGB8888 frame, converted it to
-grayscale/YA, and displayed the Nintendo boot logo on the physical PW5 through
-FBInk before normal restoration. Its implementation, physical verification,
-and deployment commands are documented in
-[docs/experiments/05.3-libretro-frame.md](docs/experiments/05.3-libretro-frame.md).
-
-Stage 5.4 is research-only. It covers controlled continuous rendering,
-frame/display decoupling, refresh scheduling, waveform selection, ghosting,
-and safe shutdown without changing the existing InkBoy interface. See
-[docs/experiments/05.4-libretro-continuous-rendering.md](docs/experiments/05.4-libretro-continuous-rendering.md).
+The live probe is a benchmark frontend, not a playable InkBoy integration:
+emulation remains below SameBoy's nominal 59.73 FPS, synchronous E-Ink
+completion blocks the single-threaded loop, CPU usage remains relatively high,
+sustainable higher display rates are unvalidated, and no objective ghosting
+measurement has been performed.
 
 ## Development workflow
 
