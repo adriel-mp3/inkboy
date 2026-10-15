@@ -7,8 +7,10 @@ initially targeting the Paperwhite 5. InkBoy is not an emulator frontend and
 must not incorporate Gambatte-K2 or its game engine.
 
 The first milestone was a GTK2 application written in C that displayed an
-interactive "Hello, Kindle!" button. Stage 2 investigates rendering the
-existing adriel.cloud duck mascot and the text "InkBoy" on the e-ink display.
+interactive "Hello, Kindle!" button. Stage 2 now uses a minimal, statically
+linked FBInk renderer to display the existing adriel.cloud duck mascot and the
+text "InkBoy" directly on the e-ink display. It remains an independent
+application, not an emulator frontend.
 
 ## Target
 
@@ -22,22 +24,25 @@ existing adriel.cloud duck mascot and the text "InkBoy" on the e-ink display.
 ## Stack
 
 - C
-- GTK2 for the completed milestone and as a compatibility reference
-- FBInk or another small Kindle framebuffer abstraction for the Stage 2 proof
-  of concept; final selection is documented in
+- FBInk sources vendored as a minimal static dependency for the Stage 2 proof
+  of concept; the exact selection and PW5 observations are documented in
   [docs/experiments/02-rendering.md](experiments/02-rendering.md)
+- librsvg/Cairo on the development host only, for SVG-to-bitmap conversion
 - Docker (build environment)
 - Make
 - Git
 
 ## Functional Requirements
 
-- FR01–FR05: Preserve the completed GTK2 milestone behavior.
+- FR01–FR05: Preserve the completed milestone behavior where still applicable;
+  the first graphical screen supersedes the GTK2 demo as the Stage 2 runtime.
 - FR06: Render the original duck SVG as a monochrome bitmap; do not invent a
   replacement mascot.
 - FR07: Display the label "InkBoy" with a restrained monochrome composition.
 - FR08: Keep rendering independent of emulator or game-engine code.
-- FR09: Restore or relinquish Kindle display ownership safely on exit.
+- FR09: Restore the saved Kindle display state safely on normal exit.
+- FR10: Render once and perform one explicit e-ink refresh; do not run a
+  refresh or animation loop.
 
 ## Build Requirements
 
@@ -69,8 +74,9 @@ reference only; its source is not copied into InkBoy.
 
 - ARM executable builds successfully.
 - Application launches on PW5.
-- Window and button are visible.
-- Touchscreen interaction works.
-- Application exits cleanly.
-- Stage 2 research identifies a rendering path and a smallest proof-of-concept
-  milestone for the duck mascot and "InkBoy" label.
+- The Stage 1 window/button criteria remain historical; Stage 2 has no input or
+  interactive menu.
+- The duck and `InkBoy` title render in a centered monochrome composition.
+- The application exits cleanly and attempts restoration on normal signals.
+- Physical rendering and restoration are verified on the Kindle Paperwhite 5
+  after a normal termination test.

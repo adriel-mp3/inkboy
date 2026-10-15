@@ -11,6 +11,15 @@
   replacement mascot when the original asset is unavailable.
 - Prefer the smallest C rendering path with minimal dependencies. Do not
   modify the Kindle root filesystem or implement an emulator at this stage.
+- Stage 2 uses a statically linked minimal FBInk build from upstream commit
+  `886f25f`, with `IMAGE` and `DRAW` enabled. InkBoy uses FBInk's public API;
+  it does not map `/dev/fb0` or issue Kindle-specific ioctls directly.
+- The original duck asset is `assets/duck.svg`; the development build converts
+  it to the generated `src/duck_bitmap.h`. The visual asset must not be
+  redrawn or replaced.
+- The renderer saves the prior framebuffer with `fbink_dump`, performs one
+  explicit refresh, and restores the dump on normal termination. Visual
+  rendering and normal restoration on the physical PW5 are verified.
 - InkBoy uses GNU GPL-3.0-only. Preserve third-party notices and check
   compatibility before reusing code or assets.
 

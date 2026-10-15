@@ -1,9 +1,11 @@
 # InkBoy v0.0.2
 
-Minimal native GTK2 application for a jailbroken Kindle Paperwhite 5.
+Minimal native C application for a jailbroken Kindle Paperwhite 5.
 
-The first milestone displays an interactive `Hello, Kindle!` button. Pressing
-it writes `Hello, Kindle!` to stdout and closing the window exits cleanly.
+Stage 2 displays the original adriel.cloud duck mascot and `InkBoy` directly on
+the e-ink display through a statically linked minimal FBInk renderer. The
+renderer is intentionally static and has no input, animation, or emulator
+code.
 
 ## Build
 
@@ -28,7 +30,7 @@ ignored by Git. If privileged Docker is unavailable, generate the Kindle SDK
 on a Linux host using the KindleModding instructions and point the build at
 that toolchain/sysroot instead of using the bootstrap helper.
 
-For a local UI/source smoke test only:
+For a local source/link smoke test only:
 
 ```sh
 make host
@@ -39,8 +41,8 @@ compatible.
 
 ## Device deployment
 
-The executable has been tested on a Kindle Paperwhite 5 (11th generation) with
-firmware 5.19.2. The repository includes a small deployment helper that uses
+The repository targets a Kindle Paperwhite 5 (11th generation) with firmware
+5.19.2. The repository includes a small deployment helper that uses
 the existing `kindle` SSH alias from `~/.ssh/config`:
 
 ```sh
@@ -53,15 +55,17 @@ The helper rebuilds the ARM executable, checks SSH connectivity, creates
 executable. `--run` starts it remotely. It does not modify the Kindle root
 filesystem.
 
-The window can also be started manually through the device's homebrew/KPM
+The renderer can also be started manually through the device's homebrew/KPM
 mechanism:
 
 ```sh
 /mnt/us/inkboy/inkboy
 ```
 
-The window title uses the Kindle/Awesome WM application format. The first
-hardware run displayed `Hello, Kindle!` successfully.
+The process performs one draw and waits for SIGINT, SIGTERM, or SIGHUP so it
+can restore the previous framebuffer state on normal exit. Hardware visual
+verification of the Stage 2 duck screen and restoration after termination is
+complete.
 
 ## Development workflow
 
@@ -72,8 +76,10 @@ tagging steps are manual for now.
 
 ## Compatibility
 
-See [docs/compatibility.md](docs/compatibility.md) for the PW5 ABI, GTK2
-runtime dependencies, and known v0.0.2 blockers.
+See [docs/compatibility.md](docs/compatibility.md) for the PW5 ABI and known
+v0.0.2 blockers. See
+[docs/experiments/02-rendering.md](docs/experiments/02-rendering.md) for the
+FBInk dependency, refresh strategy, and hardware-test status.
 
 ## License
 

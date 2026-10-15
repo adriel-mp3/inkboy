@@ -1,7 +1,8 @@
-# Stage 2 — Rendering research
+# Stage 2 — Rendering research and first screen
 
-Status: research and proof-of-concept planning only. No rendering code is
-implemented by this stage.
+Status: the first FBInk renderer and host asset conversion path are
+implemented and verified on the physical Kindle, including normal screen
+restoration.
 
 ## Scope and evidence
 
@@ -29,8 +30,8 @@ window and the Kindle's display integration performs the e-ink updates.
 
 This path fits the existing InkBoy dependency set, but it also means InkBoy
 must own a window under the Kindle window manager and retain GTK2/X11 runtime
-compatibility. It is useful for a visible first UI, not necessarily the
-smallest path for a single static mascot.
+compatibility. It is useful for a visible first UI, not the smallest path for
+a single static mascot.
 
 ### FBInk and framebuffer output
 
@@ -43,9 +44,8 @@ devices, including touchscreen and scaled-tablet types.
 
 FBInk therefore sits between InkBoy and the device-specific framebuffer and
 EPDC details. InkBoy should not write `/dev/fb*`, issue Kindle-specific ioctls,
-or guess pixel formats directly. The FBInk API can perform that translation
-and refresh request, provided a PW5-compatible library/header is available in
-the SDK or is supplied as a separately verified dependency.
+or guess pixel formats directly. The FBInk API performs that translation and
+refresh request.
 
 ### How pixels reach the display
 
@@ -53,71 +53,113 @@ In the GTK path, InkBoy writes the XCB shared-memory image and commits a
 rectangle; X11/Kindle integration schedules the display update. In the FBInk
 path, InkBoy supplies a grayscale image and rectangle to FBInk; FBInk copies or
 converts it for the framebuffer and submits the e-ink refresh. These are
-separate ownership models and should not be mixed in the first proof of
-concept.
+separate ownership models and are not mixed in this proof of concept.
 
 ### Refresh behavior and artifacts
 
 E-ink refresh is not a normal immediate LCD blit. Partial/fast waveforms can
 leave ghosting, while stronger full grayscale refreshes are slower and visibly
-flash. Gambatte-K2 explicitly characterizes FBInk as faster but more quirky and
-more prone to ghosting. For one mostly static screen, InkBoy should render once
-and request one deliberate full or high-quality update, rather than maintain a
-frame loop. A later interactive version can measure partial refresh behavior.
+flash. Gambatte-K2 characterizes FBInk as faster but more quirky and more prone
+to ghosting. For one mostly static screen, InkBoy renders once and requests one
+deliberate full or high-quality update, rather than maintaining a frame loop.
 
-### Dependencies and device constraints
+## PW5 dependency verification
 
-The existing build already provides the cross-compiler, Kindle sysroot, GTK2,
-and deployment to `/mnt/us/inkboy`. GTK2/X11 requires the matching Kindle
-runtime and a usable X display/window-manager session. FBInk adds a Kindle
-framebuffer library and requires access to the framebuffer device; permissions,
-device path, pixel format, screen orientation, and waveform support must be
-verified on the actual PW5. Touch input is out of scope for this static proof
-of concept.
+The physical PW5 was probed over SSH. The relevant FBInk/device state was:
 
-Neither reference code nor its tested firmware list proves that an FBInk
-binary built for another Kindle generation is safe on 5.19.2. The next
-implementation must fail cleanly if the framebuffer or library cannot be
-opened.
+```text
+FBINK_VERSION=92e1270
+FBINK_TARGET=2
+FBINK_FEATURES=0x17
+viewWidth=1236 viewHeight=1648 screenWidth=1236 screenHeight=1648
+viewVertOrigin=8 DPI=300 BPP=8 lineLength=1248 pixelFormat=Y8
+FBID=hwtcon_v2 deviceName="PaperWhite 5" deviceCodename=Malbec
+devicePlatform=Bellatrix isMTK=1 hasEclipseWfm=1
+```
 
-### Ownership and restoration
+The device contains `/mnt/us/koreader/fbink`, but does not contain a core
+linkable `libfbink.so`. The discovered shared object is
+`/mnt/us/koreader/libs/libfbink_input.so.1`, which is the input helper and is
+not the rendering API needed here. The available KOReader FBInk CLI also
+reports `Image=No` in its options, so it is not used as InkBoy's image
+renderer.
 
-Direct framebuffer rendering bypasses the normal application window. It must
-not leave the device showing a stale screen after exit. The proof of concept
-should save the prior display state where the chosen API permits it, render
-only a bounded region, avoid changing persistent system settings, and issue a
-final restoration/refresh before closing. If safe restoration cannot be
-demonstrated, use a GTK window first and treat direct FBInk output as an
-explicitly experimental mode.
+The POC therefore vendors the minimal rendering sources from [FBInk
+upstream](https://github.com/NiLuJe/FBInk) at commit `886f25f`, built with
+`FBINK_MINIMAL`, `FBINK_WITH_IMAGE`, and `FBINK_WITH_DRAW`. The exact source
+revision embedded in the device's
+`92e1270` executable was not available as a public Git reference, so the
+device run remains a required compatibility check. The vendor copy retains
+its upstream GPL notice in `third_party/fbink/LICENSE`; no Gambatte-K2 source
+was copied.
+
+The asset conversion tool runs on the development host and uses the host's
+`librsvg`/Cairo stack. The Kindle receives only the generated 1-bit bitmap
+header and the statically linked FBInk renderer; no SVG or raster library is
+needed at runtime.
+
+## Ownership and restoration
+
+Direct framebuffer rendering bypasses the normal application window. The POC
+uses `fbink_dump()` before drawing and `fbink_restore()` after SIGINT, SIGTERM,
+or SIGHUP. It does not change persistent settings or the root filesystem. The
+process remains alive after its one draw so the previous screen can be
+restored on an ordinary exit; SIGKILL or a power loss cannot be handled by the
+application.
 
 ## Recommendation
 
-Use a minimal FBInk-backed renderer for the static mascot proof of concept,
-with a GTK2 fallback only if PW5 framebuffer access or a compatible FBInk
-dependency cannot be established. This keeps the application small, avoids an
-unnecessary emulator/UI stack, and makes the e-ink refresh request explicit.
-The renderer should contain only:
+Use the minimal FBInk-backed renderer for the static mascot screen. A GTK2
+fallback is not needed for this milestone because the PW5 framebuffer is
+accessible and FBInk can be built into the application without a runtime
+library dependency. This keeps the application small and makes the e-ink
+refresh request explicit. The renderer contains only:
 
 1. a monochrome raster generated from the original adriel.cloud duck SVG;
-2. a tiny built-in bitmap font for `InkBoy` (or a verified existing system
-   font path, if that does not add a dependency);
+2. a tiny built-in bitmap font for `InkBoy`;
 3. a single grayscale buffer and bounded placement calculation; and
-4. one FBInk raw-data write plus one refresh, followed by safe cleanup.
+4. one FBInk raw-data write with refresh suppressed, one explicit full-screen
+   flashing refresh, and safe cleanup.
 
-The SVG remains the visual authority. Conversion to a device-sized monochrome
-bitmap should happen on the development host, keeping SVG parsing and raster
-libraries off the Kindle. The asset's provenance and license must be recorded
-before it is bundled.
+The screen buffer is allocated as YA (luminance plus alpha), which FBInk
+documents as the preferred Kindle raw-image format. The current PW5 geometry
+requires 1236 × 1648 × 2 bytes, approximately 3.9 MiB, for the temporary
+buffer. InkBoy never maps `/dev/fb0`, writes framebuffer memory, or issues
+Kindle-specific ioctls itself; those operations remain inside FBInk.
+
+## Implemented proof of concept
+
+`src/main.c` opens and initializes FBInk, reads the device geometry, centers a
+nearest-neighbor raster of `assets/duck.svg`, and draws a small built-in 5×7
+bitmap font spelling `InkBoy`. `tools/svg_to_bitmap.c` renders the original
+512×512 SVG to `src/duck_bitmap.h` at 256×256 during development. The original
+SVG is the visual source; no replacement mascot was drawn.
+
+Build commands:
+
+```sh
+make asset
+make TARGET=kindle KINDLE_CC=/path/to/arm-kindlehf-linux-gnueabihf-gcc build/inkboy
+make TARGET=host CC=gcc build/inkboy-host
+```
+
+The normal `make` and `bin/deploy` workflow remains the intended cross-build
+and deployment path. The host build only checks source/link completeness; it
+cannot render without a Kindle framebuffer.
+
+## Hardware verification status
+
+The FBInk CLI text path was previously confirmed on the physical PW5, and the
+device probe above confirms the framebuffer geometry and device identity. The
+user visually confirmed the duck and `InkBoy` screen on the physical PW5 after
+launching it through KOReader's terminal plugin. This confirms the rendering
+path on the target hardware. The user also confirmed that normal termination
+restored the previous screen. This verifies both the rendering path and the
+normal restoration path on the target hardware. No specific ghosting
+measurement was recorded.
 
 ## Smallest next milestone
 
-Implement `render-duck-poc`: add the original SVG-derived monochrome asset,
-link the smallest PW5-compatible FBInk interface available through the SDK,
-render the duck and `InkBoy` once, deploy with the existing `bin/deploy`, and
-verify on hardware that the image is visible, refresh artifacts are acceptable,
-and the screen/application exits safely. Do not add input, animation, GTK
-widgets, emulator code, or root-filesystem installation in that milestone.
-
-Acceptance evidence should include the exact framebuffer/FBInk dependency,
-display geometry and pixel format, refresh mode used, observed ghosting, and
-the restoration behavior on exit.
+Stage 2 acceptance is complete. Any next milestone should be specified
+separately; do not add input, animation, GTK widgets, emulator code, or
+root-filesystem installation as part of this rendering experiment.
