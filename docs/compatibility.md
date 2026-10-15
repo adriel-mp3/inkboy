@@ -9,6 +9,10 @@ selects the `kindlehf` target. The corresponding toolchain uses the
 little-endian ARM hard-float executable. This is the correct target for PW5
 5.19.2; `kindlepw2` is the older target for firmware below 5.16.3.
 
+The resulting executable was compiled, transferred, and executed successfully
+on a PW5 with firmware 5.19.2. The GTK2 window displayed `Hello, Kindle!`.
+Deployment uses the `kindle` SSH alias and writes only to `/mnt/us/inkboy`.
+
 The device-side checks to run before installation are:
 
 ```sh
@@ -55,18 +59,15 @@ No emulator, QEMU setup, or device-side compiler is included in v0.1.
 
 ## Compatibility blockers
 
-1. There is no PW5 attached to this workspace, so launch, touchscreen events,
-   dynamic loading, window-manager placement, and e-ink refresh have not been
-   verified on hardware.
-2. The current Kindle SDK installer uses a 5.16.3 firmware baseline for its
+1. The current Kindle SDK installer uses a 5.16.3 firmware baseline for its
    `kindlehf` sysroot. That establishes the ABI family but is not a byte-for-
-   byte 5.19.2 runtime match. For release-quality validation, generate the
-   sysroot from the exact 5.19.2 PW5 firmware or compare every `NEEDED` library
-   with the device before deployment.
-3. GTK2 requires the Kindle's X11/Awesome windowing environment. The app is
+   byte 5.19.2 runtime match. The minimal application runs on the tested
+   device, but future releases should generate the sysroot from the exact
+   5.19.2 PW5 firmware or compare every `NEEDED` library with the device.
+2. GTK2 requires the Kindle's X11/Awesome windowing environment. The app is
    not a framebuffer or emulator application; it assumes the normal GUI
    session is available when KPM launches it.
-4. KPM packaging/launcher metadata is intentionally not part of this
+3. KPM packaging/launcher metadata is intentionally not part of this
    milestone. The raw executable is the v0.1 artifact; packaging and a device
    launch script can be added after hardware validation.
 

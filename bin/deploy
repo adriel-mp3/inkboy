@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+readonly PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+readonly SSH_ALIAS="kindle"
+readonly REMOTE_DIR="/mnt/us/inkboy"
+readonly REMOTE_BIN="${REMOTE_DIR}/inkboy"
+readonly LOCAL_BIN="${PROJECT_ROOT}/build/inkboy"
+
+die() {
+    printf 'deploy: %s\n' "$*" >&2
+    exit 1
+}
+
+usage() {
+    printf 'Usage: %s [--run]\n' "${0##*/}"
+}
+
+run_remote() {
+    ssh "$SSH_ALIAS" "$@"
+}
+
+run_program=false
+case "${1:-}" in
+    '')
+        ;;
+    --run)
+        run_program=true
+        ;;
+    --help|-h)
+        usage
+        exit 0
+        ;;
+    *)
+        usage >&2
+        exit 2
+        ;;
+esac
+
+command -v make >/dev/null 2>&1 || die "make is required"
+command -v ssh >/dev/null 2>&1 || die "ssh is required"
+command -v scp >/dev/null 2>&1 || die "scp is required"
+
+printf '[1/4] Building Kindle executable\n'
+make -C "$PROJECT_ROOT"
+
+[[ -x "$LOCAL_BIN" ]] || die "build did not produce executable: $LOCAL_BIN"
+
+printf '[2/4] Checking SSH connection to %s\n' "$SSH_ALIAS"
+run_remote true || die "could not connect to SSH host '$SSH_ALIAS'"
+
+printf '[3/4] Deploying %s\n' "$REMOTE_BIN"
+run_remote mkdir -p "$REMOTE_DIR"
+scp -O "$LOCAL_BIN" "${SSH_ALIAS}:${REMOTE_BIN}"
+run_remote chmod +x "$REMOTE_BIN"
+
+printf '[4/4] Deployment complete\n'
+if $run_program; then
+    printf 'Running %s\n' "$REMOTE_BIN"
+    run_remote "$REMOTE_BIN"
+fi

@@ -37,14 +37,38 @@ make host
 The host build is not evidence that the Kindle ABI or runtime libraries are
 compatible.
 
-## Device launch
+## Device deployment
 
-Copy `build/inkboy` to the jailbroken Kindle and launch it through the device's
-homebrew/KPM mechanism. The application does not modify Kindle system files.
+The executable has been tested on a Kindle Paperwhite 5 (11th generation) with
+firmware 5.19.2. The repository includes a small deployment helper that uses
+the existing `kindle` SSH alias from `~/.ssh/config`:
 
-The window title uses the Kindle/Awesome WM application format. A real PW5
-test is still required to confirm the exact launcher setup and e-ink refresh
-behavior.
+```sh
+./bin/deploy
+./bin/deploy --run
+```
+
+The helper rebuilds the ARM executable, checks SSH connectivity, creates
+`/mnt/us/inkboy`, transfers the executable with `scp -O`, and makes it
+executable. `--run` starts it remotely. It does not modify the Kindle root
+filesystem.
+
+The window can also be started manually through the device's homebrew/KPM
+mechanism:
+
+```sh
+/mnt/us/inkboy/inkboy
+```
+
+The window title uses the Kindle/Awesome WM application format. The first
+hardware run displayed `Hello, Kindle!` successfully.
+
+## Development workflow
+
+Commit messages use Conventional Commits and releases use annotated semantic
+version tags. See [AGENTS.md](AGENTS.md) for repository instructions and
+[docs/commits.md](docs/commits.md) for the complete convention. Release and
+tagging steps are manual for now.
 
 ## Compatibility
 
