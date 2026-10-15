@@ -14,6 +14,7 @@ KINDLE_CC   ?= $(KINDLE_TC)/bin/arm-kindlehf-linux-gnueabihf-gcc
 
 COMMON_CFLAGS := -std=c11 -Wall -Wextra -Wpedantic -O2
 SOURCE        := src/main.c
+TOUCH_PROBE_SOURCE := tools/touch_probe.c
 ASSET_HEADER  := src/duck_bitmap.h
 ASSET_TOOL    := build/svg_to_bitmap
 FBINK_DIR     := third_party/fbink
@@ -32,7 +33,7 @@ FBINK_CPPFLAGS := -I$(FBINK_DIR) -D_REENTRANT=1 -D_GNU_SOURCE \
 	-DFBINK_MINIMAL -DFBINK_WITH_IMAGE -DFBINK_WITH_DRAW \
 	-DFBINK_VERSION=\"$(FBINK_VERSION)\"
 
-.PHONY: all docker-image bootstrap docker-build host asset clean inspect
+.PHONY: all docker-image bootstrap docker-build host touch-probe asset clean inspect
 
 # The default is deliberately the isolated Kindle build. It will stop with a
 # useful message until a Kindle SDK/sysroot has been bootstrapped.
@@ -58,14 +59,14 @@ docker-build: docker-image
 		--workdir /workspace \
 		$(IMAGE) make TARGET=kindle KINDLE_TC=$(KINDLE_TC) \
 		KINDLE_SYSROOT=$(KINDLE_SYSROOT) KINDLE_CC=$(KINDLE_CC) \
-		build/$(PROJECT)
+		build/$(PROJECT) build/touch_probe
 
 # A host build is only a source/UI smoke test. It does not establish Kindle
 # ABI or runtime compatibility.
 host: docker-image
 	$(DOCKER_ENV) $(DOCKER) run --rm --user "$$(id -u):$$(id -g)" \
 		--volume "$(ROOT_DIR):/workspace" --workdir /workspace \
-		$(IMAGE) make TARGET=host build/$(PROJECT)-host
+		$(IMAGE) make TARGET=host build/$(PROJECT)-host build/touch_probe-host
 
 asset: $(ASSET_HEADER)
 
@@ -81,10 +82,12 @@ $(ASSET_HEADER): assets/duck.svg $(ASSET_TOOL)
 ifeq ($(TARGET),host)
 CC           := gcc
 OUTPUT       := build/$(PROJECT)-host
+TOUCH_PROBE_OUTPUT := build/touch_probe-host
 FBINK_PLATFORM := -DFBINK_FOR_LINUX
 else
 CC           := $(KINDLE_CC)
 OUTPUT       := build/$(PROJECT)
+TOUCH_PROBE_OUTPUT := build/touch_probe
 FBINK_PLATFORM := -DFBINK_FOR_KINDLE
 endif
 
@@ -102,6 +105,12 @@ $(OUTPUT): $(SOURCE) $(ASSET_HEADER) build/libfbink-$(TARGET).a
 	@mkdir -p $(BUILD_DIR)
 	$(CC) $(COMMON_CFLAGS) -D_POSIX_C_SOURCE=200809L -Isrc -I$(FBINK_DIR) $(SOURCE) \
 		build/libfbink-$(TARGET).a -o $@
+
+$(TOUCH_PROBE_OUTPUT): $(TOUCH_PROBE_SOURCE)
+	@mkdir -p $(BUILD_DIR)
+	$(CC) $(COMMON_CFLAGS) $< -o $@
+
+touch-probe: $(TOUCH_PROBE_OUTPUT)
 
 inspect: build/$(PROJECT)
 	file build/$(PROJECT)

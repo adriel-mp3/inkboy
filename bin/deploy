@@ -6,7 +6,9 @@ readonly PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 readonly SSH_ALIAS="kindle"
 readonly REMOTE_DIR="/mnt/us/inkboy"
 readonly REMOTE_BIN="${REMOTE_DIR}/inkboy"
+readonly REMOTE_TOUCH_PROBE="${REMOTE_DIR}/touch_probe"
 readonly LOCAL_BIN="${PROJECT_ROOT}/build/inkboy"
+readonly LOCAL_TOUCH_PROBE="${PROJECT_ROOT}/build/touch_probe"
 
 die() {
     printf 'deploy: %s\n' "$*" >&2
@@ -14,7 +16,7 @@ die() {
 }
 
 usage() {
-    printf 'Usage: %s [--run]\n' "${0##*/}"
+    printf 'Usage: %s [--run|--probe]\n' "${0##*/}"
 }
 
 run_remote() {
@@ -22,11 +24,15 @@ run_remote() {
 }
 
 run_program=false
+run_probe=false
 case "${1:-}" in
     '')
         ;;
     --run)
         run_program=true
+        ;;
+    --probe)
+        run_probe=true
         ;;
     --help|-h)
         usage
@@ -38,25 +44,35 @@ case "${1:-}" in
         ;;
 esac
 
+if $run_program && $run_probe; then
+    usage >&2
+    exit 2
+fi
+
 command -v make >/dev/null 2>&1 || die "make is required"
 command -v ssh >/dev/null 2>&1 || die "ssh is required"
 command -v scp >/dev/null 2>&1 || die "scp is required"
 
-printf '[1/4] Building Kindle executable\n'
+printf '[1/4] Building Kindle executables\n'
 make -C "$PROJECT_ROOT"
 
 [[ -x "$LOCAL_BIN" ]] || die "build did not produce executable: $LOCAL_BIN"
+[[ -x "$LOCAL_TOUCH_PROBE" ]] || die "build did not produce executable: $LOCAL_TOUCH_PROBE"
 
 printf '[2/4] Checking SSH connection to %s\n' "$SSH_ALIAS"
 run_remote true || die "could not connect to SSH host '$SSH_ALIAS'"
 
-printf '[3/4] Deploying %s\n' "$REMOTE_BIN"
+printf '[3/4] Deploying InkBoy and touch_probe\n'
 run_remote mkdir -p "$REMOTE_DIR"
-scp -O "$LOCAL_BIN" "${SSH_ALIAS}:${REMOTE_BIN}"
+scp -O "$LOCAL_BIN" "$LOCAL_TOUCH_PROBE" "${SSH_ALIAS}:${REMOTE_DIR}/"
 run_remote chmod +x "$REMOTE_BIN"
+run_remote chmod +x "$REMOTE_TOUCH_PROBE"
 
 printf '[4/4] Deployment complete\n'
-if $run_program; then
+if $run_probe; then
+    printf 'Running %s\n' "$REMOTE_TOUCH_PROBE"
+    run_remote "$REMOTE_TOUCH_PROBE"
+elif $run_program; then
     printf 'Running %s\n' "$REMOTE_BIN"
     run_remote "$REMOTE_BIN"
 fi
