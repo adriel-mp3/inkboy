@@ -79,7 +79,9 @@ tagging steps are manual for now.
 See [docs/compatibility.md](docs/compatibility.md) for the PW5 ABI and known
 v0.0.2 blockers. See
 [docs/experiments/02-rendering.md](docs/experiments/02-rendering.md) for the
-FBInk dependency, refresh strategy, and hardware-test status.
+FBInk dependency, refresh strategy, and hardware-test status. The rationale
+for vendoring FBInk is recorded in
+[docs/architecture.md](docs/architecture.md).
 
 ## License
 
