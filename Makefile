@@ -22,6 +22,9 @@ SAMEBOY_WORK_HOST := build/sameboy-work-host
 SAMEBOY_WORK_KINDLE := build/sameboy-work-kindle
 LIBRETRO_PROBE_HOST := build/libretro_probe-host
 LIBRETRO_PROBE_KINDLE := build/libretro_probe
+LIBRETRO_FRAME_SOURCE := tools/libretro_frame.c
+LIBRETRO_FRAME_HOST := build/libretro_frame-host
+LIBRETRO_FRAME_KINDLE := build/libretro_frame
 TOUCH_PROBE_SOURCE := tools/touch_probe.c
 ASSET_HEADER  := src/duck_bitmap.h
 ASSET_TOOL    := build/svg_to_bitmap
@@ -41,7 +44,7 @@ FBINK_CPPFLAGS := -I$(FBINK_DIR) -D_REENTRANT=1 -D_GNU_SOURCE \
 	-DFBINK_MINIMAL -DFBINK_WITH_IMAGE -DFBINK_WITH_DRAW \
 	-DFBINK_VERSION=\"$(FBINK_VERSION)\"
 
-.PHONY: all docker-image bootstrap docker-build host touch-probe asset sameboy-core-host sameboy-core-kindle libretro-probe-host libretro-probe-kindle deploy-libretro-probe clean inspect
+.PHONY: all docker-image bootstrap docker-build docker-build-libretro-frame host host-libretro-frame touch-probe asset sameboy-core-host sameboy-core-kindle libretro-probe-host libretro-probe-kindle deploy-libretro-probe libretro-frame-host libretro-frame-kindle deploy-libretro-frame clean inspect
 
 # The default is deliberately the isolated Kindle build. It will stop with a
 # useful message until a Kindle SDK/sysroot has been bootstrapped.
@@ -75,6 +78,22 @@ host: docker-image
 	$(DOCKER_ENV) $(DOCKER) run --rm --user "$$(id -u):$$(id -g)" \
 		--volume "$(ROOT_DIR):/workspace" --workdir /workspace \
 		$(IMAGE) make TARGET=host build/$(PROJECT)-host build/touch_probe-host build/libretro_probe-host
+
+host-libretro-frame: docker-image
+	$(DOCKER_ENV) $(DOCKER) run --rm --user "$$(id -u):$$(id -g)" \
+		--volume "$(ROOT_DIR):/workspace" --workdir /workspace \
+		$(IMAGE) make TARGET=host libretro-frame-host
+
+docker-build-libretro-frame: docker-image
+	@test -x "$(TOOLCHAIN)/arm-kindlehf-linux-gnueabihf/bin/arm-kindlehf-linux-gnueabihf-gcc" || \
+		(echo "Kindle toolchain not found. Run 'make bootstrap' first." >&2; exit 2)
+	$(DOCKER_ENV) $(DOCKER) run --rm --user "$$(id -u):$$(id -g)" \
+		--volume "$(ROOT_DIR):/workspace" \
+		--volume "$(TOOLCHAIN):/opt/x-tools:ro" \
+		--workdir /workspace \
+		$(IMAGE) make TARGET=kindle KINDLE_TC=$(KINDLE_TC) \
+		KINDLE_SYSROOT=$(KINDLE_SYSROOT) KINDLE_CC=$(KINDLE_CC) \
+		libretro-frame-kindle
 
 sameboy-core-host: $(SAMEBOY_CORE_HOST)
 
@@ -111,9 +130,26 @@ $(LIBRETRO_PROBE_KINDLE): $(LIBRETRO_PROBE_SOURCE) $(SAMEBOY_CORE_KINDLE)
 libretro-probe-host: $(LIBRETRO_PROBE_HOST)
 libretro-probe-kindle: $(LIBRETRO_PROBE_KINDLE)
 
+$(LIBRETRO_FRAME_HOST): $(LIBRETRO_FRAME_SOURCE) $(SAMEBOY_CORE_HOST) build/libfbink-host.a
+	@mkdir -p $(BUILD_DIR)
+	$(HOST_CC) $(COMMON_CFLAGS) -D_POSIX_C_SOURCE=200809L \
+		-I$(SAMEBOY_DIR)/libretro -I$(FBINK_DIR) $< build/libfbink-host.a -ldl -lm -o $@
+
+$(LIBRETRO_FRAME_KINDLE): $(LIBRETRO_FRAME_SOURCE) $(SAMEBOY_CORE_KINDLE) build/libfbink-kindle.a
+	@mkdir -p $(BUILD_DIR)
+	$(KINDLE_CC) $(COMMON_CFLAGS) -D_POSIX_C_SOURCE=200809L \
+		-I$(SAMEBOY_DIR)/libretro -I$(FBINK_DIR) $< build/libfbink-kindle.a -ldl -lm -o $@
+
+libretro-frame-host: $(LIBRETRO_FRAME_HOST)
+libretro-frame-kindle: $(LIBRETRO_FRAME_KINDLE)
+
 deploy-libretro-probe: libretro-probe-kindle
 	@mkdir -p build/libretro-probe-deploy
 	cp $(LIBRETRO_PROBE_KINDLE) $(SAMEBOY_CORE_KINDLE) build/libretro-probe-deploy/
+
+deploy-libretro-frame: libretro-frame-kindle
+	@mkdir -p build/libretro-frame-deploy
+	cp $(LIBRETRO_FRAME_KINDLE) $(SAMEBOY_CORE_KINDLE) build/libretro-frame-deploy/
 
 asset: $(ASSET_HEADER)
 
@@ -151,7 +187,7 @@ build/libfbink-$(TARGET).a: $(FBINK_OBJECTS)
 $(OUTPUT): $(SOURCE) $(ASSET_HEADER) build/libfbink-$(TARGET).a
 	@mkdir -p $(BUILD_DIR)
 	$(CC) $(COMMON_CFLAGS) -D_POSIX_C_SOURCE=200809L -Isrc -I$(FBINK_DIR) $(SOURCE) \
-		build/libfbink-$(TARGET).a -o $@
+		build/libfbink-$(TARGET).a -lm -o $@
 
 $(TOUCH_PROBE_OUTPUT): $(TOUCH_PROBE_SOURCE)
 	@mkdir -p $(BUILD_DIR)
