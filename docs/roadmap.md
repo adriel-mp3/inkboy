@@ -41,3 +41,4 @@ that can be implemented, tested, and reviewed independently.
 - [`TASK-001 — Repeat instrumented PW5 performance baseline`](tasks/TASK-001-performance-investigation.md) — Complete.
 - [`TASK-002 — Investigate synchronous refresh blocking`](tasks/TASK-002-synchronous-refresh-blocking.md) — Complete.
 - [`TASK-003 — SameBoy Emulation Performance Investigation`](tasks/TASK-003-sameboy-emulation-performance.md) — Complete.
+- [`TASK-004 — SameBoy profiling tools and instrumentation cost`](tasks/TASK-004-sameboy-profiling-tools.md) — In progress; audio sample-rate experiment complete.

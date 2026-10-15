@@ -62,6 +62,8 @@ struct metrics {
     unsigned long draw_attempts;
     unsigned long draw_failures;
     unsigned long callback_copy_count;
+    unsigned long audio_batch_callbacks;
+    unsigned long audio_frames;
     unsigned long convert_count;
     unsigned long nearest_scale_count;
     unsigned long sleep_count;
@@ -130,6 +132,9 @@ static bool pixel_format_seen;
 static bool pixel_format_ok;
 static bool capture_error;
 static enum scale_mode selected_scale = SCALE_SMOOTH;
+static unsigned target_sample_rate;
+static unsigned long target_sample_rate_queries;
+static unsigned long target_sample_rate_responses;
 
 static struct timespec monotonic_now(void)
 {
@@ -195,6 +200,8 @@ static void audio_sample(int16_t left, int16_t right)
 static size_t audio_batch(const int16_t *data, size_t frames)
 {
     (void)data;
+    measured.audio_batch_callbacks++;
+    measured.audio_frames += frames;
     return frames;
 }
 
@@ -220,6 +227,15 @@ static void core_log(enum retro_log_level level, const char *format, ...)
 
 static bool environment(unsigned command, void *data)
 {
+    if (command == RETRO_ENVIRONMENT_GET_TARGET_SAMPLE_RATE) {
+        target_sample_rate_queries++;
+        if (data != NULL && target_sample_rate != 0U) {
+            *(unsigned *)data = target_sample_rate;
+            target_sample_rate_responses++;
+            return true;
+        }
+        return false;
+    }
     if (command == RETRO_ENVIRONMENT_SET_PIXEL_FORMAT) {
         enum retro_pixel_format requested = *(enum retro_pixel_format *)data;
 
@@ -720,6 +736,9 @@ static void report_metrics(double elapsed, uint64_t cpu_start)
     }
     printf("metrics elapsed=%.3f emu_fps=%.2f display_fps=%.2f "
            "avg_emu_frame_ms=%.3f avg_callback_copy_ms=%.3f "
+           "target_sample_rate_hz=%u target_sample_rate_queries=%lu "
+           "target_sample_rate_responses=%lu audio_batch_callbacks=%lu "
+           "audio_frames=%lu "
            "avg_convert_ms=%.3f avg_fbink_draw_ms=%.3f "
            "avg_nearest_scale_ms=%.3f "
            "avg_refresh_submit_ms=%.3f avg_refresh_wait_ms=%.3f "
@@ -733,6 +752,9 @@ static void report_metrics(double elapsed, uint64_t cpu_start)
                ? measured.callback_copy_seconds * 1000.0 /
                      (double)measured.callback_copy_count
                : 0.0,
+           target_sample_rate, target_sample_rate_queries,
+           target_sample_rate_responses, measured.audio_batch_callbacks,
+           measured.audio_frames,
            measured.convert_count > 0U
                ? measured.convert_seconds * 1000.0 /
                      (double)measured.convert_count
@@ -770,7 +792,8 @@ static int usage(const char *program)
 {
     fprintf(stderr, "usage: %s CORE ROM [duration_seconds] [display_fps] "
                     "[--warmup FRAMES] [--capture-only] "
-                    "[--scale smooth|native|nearest]\n", program);
+                    "[--scale smooth|native|nearest] "
+                    "[--target-sample-rate HZ]\n", program);
     return 2;
 }
 
@@ -800,7 +823,7 @@ int main(int argc, char **argv)
     double emu_fps = 60.0;
     int exit_code = 1;
 
-    if (argc < 3 || argc > 10) {
+    if (argc < 3 || argc > 12) {
         return usage(argv[0]);
     }
     core_path = argv[1];
@@ -826,6 +849,16 @@ int main(int argc, char **argv)
                    parse_unsigned(argv[++argument], &warmup_frames) == 0) {
         } else if (strncmp(argv[argument], "--warmup=", 9U) == 0 &&
                    parse_unsigned(argv[argument] + 9U, &warmup_frames) == 0) {
+        } else if (strcmp(argv[argument], "--target-sample-rate") == 0 &&
+                   argument + 1 < argc) {
+            unsigned long parsed_sample_rate;
+
+            if (parse_unsigned(argv[++argument], &parsed_sample_rate) != 0 ||
+                parsed_sample_rate <= 8000UL ||
+                parsed_sample_rate >= 1024UL * 1024UL) {
+                return usage(argv[0]);
+            }
+            target_sample_rate = (unsigned)parsed_sample_rate;
         } else if (!duration_set &&
                    parse_positive_double(argv[argument], &duration) == 0) {
             duration_set = true;
