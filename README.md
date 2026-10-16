@@ -2,10 +2,12 @@
 
 Minimal native C application for a jailbroken Kindle Paperwhite 5.
 
-Stage 2 displays the original adriel.cloud duck mascot and `InkBoy` directly on
-the e-ink display through a statically linked minimal FBInk renderer. The
-renderer is intentionally static and has no input, animation, or emulator
-code.
+The current M5 prototype integrates Pokémon Yellow through a pinned SameBoy
+Libretro core, virtual touchscreen controls, and a minimal statically linked
+FBInk renderer. Presentation remains single-threaded with a conservative 1 FPS
+full-screen refresh. Gameplay, control response and normal shutdown/restoration
+have been validated on the physical PW5; Power is not a controlled exit.
+The original Stage 2 duck renderer remains a historical validated baseline.
 
 ## Build
 
@@ -62,10 +64,19 @@ mechanism:
 /mnt/us/inkboy/inkboy
 ```
 
-The process performs one draw and waits for SIGINT, SIGTERM, or SIGHUP so it
-can restore the previous framebuffer state on normal exit. Hardware visual
-verification of the Stage 2 duck screen and restoration after termination is
-complete.
+The gameplay build uses fixed core/ROM paths; it stops through EXIT, SIGINT,
+SIGTERM, SIGHUP or a runtime error and attempts framebuffer restoration. The
+default core path is `/mnt/us/inkboy/task008-gameplay/sameboy_libretro.so`;
+the ROM is the Pokémon Yellow file under `/mnt/us/games` specified in `main.c`.
+The earlier Stage 2 duck screen and restoration have been physically verified;
+the gameplay path's separate physical matrix is recorded in TASK-009.
+
+TASK-009 adds structured runtime timing and cleanup logs. `make deploy-task009`
+stages separate full-screen/experimental-region binaries and diagnostic helpers
+without replacing TASK-008 deployments. These builds use the isolated
+`/mnt/us/inkboy/task009-runtime/sameboy_libretro.so` core path. Build instructions,
+measurement definitions, local/physical results and the repeatable device protocol are
+in [the TASK-009 runtime report](docs/experiments/09-gameplay-runtime.md).
 
 ## Stage 5.4 benchmark status
 

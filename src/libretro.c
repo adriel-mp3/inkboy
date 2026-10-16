@@ -1,6 +1,7 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include "libretro.h"
+#include "profile.h"
 #include "../third_party/sameboy/libretro/libretro.h"
 
 #include <dlfcn.h>
@@ -50,6 +51,8 @@ struct inkboy_libretro {
     unsigned height;
     size_t pitch;
     bool frame_ready;
+    bool frame_pending;
+    uint64_t control_changed_at;
     double fps;
     uint16_t buttons;
 };
@@ -94,14 +97,26 @@ static void video_refresh(const void *data, unsigned width, unsigned height,
     size_t row_bytes;
     size_t bytes;
     uint32_t *pixels;
+    uint64_t start = inkboy_profile_now();
 
-    if (active_emulator == NULL || data == NULL || width == 0U ||
+    inkboy_profile.callbacks++;
+    if (data == NULL) {
+        inkboy_profile.duplicate_frames++;
+        return;
+    }
+    if (active_emulator == NULL || width == 0U ||
         height == 0U || width > 1024U || height > 1024U ||
         (size_t)height > SIZE_MAX / ((size_t)width * sizeof(uint32_t))) {
+        inkboy_profile.invalid_frames++;
         return;
     }
     row_bytes = (size_t)width * sizeof(uint32_t);
     if (pitch < row_bytes || (size_t)height > SIZE_MAX / row_bytes) {
+        inkboy_profile.invalid_frames++;
+        return;
+    }
+    if (pitch > SIZE_MAX / height) {
+        inkboy_profile.invalid_frames++;
         return;
     }
     bytes = (size_t)height * row_bytes;
@@ -109,6 +124,7 @@ static void video_refresh(const void *data, unsigned width, unsigned height,
     if (active_emulator->width != width || active_emulator->height != height) {
         pixels = malloc(bytes);
         if (pixels == NULL) {
+            inkboy_profile.invalid_frames++;
             return;
         }
         free(active_emulator->pixels);
@@ -123,6 +139,12 @@ static void video_refresh(const void *data, unsigned width, unsigned height,
                row_bytes);
     }
     active_emulator->frame_ready = true;
+    if (active_emulator->frame_pending) {
+        inkboy_profile.superseded_frames++;
+    }
+    active_emulator->frame_pending = true;
+    inkboy_profile.valid_frames++;
+    inkboy_profile_record(INKBOY_PROFILE_CALLBACK_COPY, start);
 }
 
 static void audio_sample(int16_t left, int16_t right)
@@ -146,8 +168,13 @@ static int16_t input_state(unsigned port, unsigned device, unsigned index,
 {
     if (active_emulator == NULL || port != 0U ||
         (device & RETRO_DEVICE_MASK) != RETRO_DEVICE_JOYPAD ||
-        index != 0U) {
+        index != 0U || (id >= 16U && id != RETRO_DEVICE_ID_JOYPAD_MASK)) {
         return 0;
+    }
+    if (active_emulator->control_changed_at != 0U) {
+        inkboy_profile_record(INKBOY_PROFILE_INPUT_TO_STATE,
+                              active_emulator->control_changed_at);
+        active_emulator->control_changed_at = 0U;
     }
     if (id == RETRO_DEVICE_ID_JOYPAD_MASK) {
         return (int16_t)active_emulator->buttons;
@@ -282,11 +309,14 @@ int inkboy_libretro_run(struct inkboy_libretro *emulator)
         return -1;
     }
     emulator->frame_ready = false;
+    uint64_t start = inkboy_profile_now();
     emulator->api.run();
+    inkboy_profile.runs++;
+    inkboy_profile_record(INKBOY_PROFILE_EMULATION, start);
     return 0;
 }
 
-bool inkboy_libretro_frame(const struct inkboy_libretro *emulator,
+bool inkboy_libretro_frame(struct inkboy_libretro *emulator,
                            struct inkboy_video_frame *frame)
 {
     if (emulator == NULL || frame == NULL || !emulator->frame_ready) {
@@ -296,6 +326,7 @@ bool inkboy_libretro_frame(const struct inkboy_libretro *emulator,
     frame->width = emulator->width;
     frame->height = emulator->height;
     frame->pitch = emulator->pitch;
+    emulator->frame_pending = false;
     return true;
 }
 
@@ -312,6 +343,12 @@ void inkboy_libretro_set_control(struct inkboy_libretro *emulator,
 
     if (emulator == NULL || id < 0) {
         return;
+    }
+    if (((emulator->buttons & (uint16_t)(1U << (unsigned)id)) != 0U) == pressed) {
+        return;
+    }
+    if (emulator->control_changed_at == 0U) {
+        emulator->control_changed_at = inkboy_profile_now();
     }
     if (pressed) {
         emulator->buttons |= (uint16_t)(1U << (unsigned)id);

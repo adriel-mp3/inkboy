@@ -1,7 +1,7 @@
 # TASK-009 — Profile and Stabilize PW5 Gameplay Runtime
 
 - Milestone: M5 — Playable Prototype
-- Status: Planned
+- Status: Complete — profiling and shutdown validated on physical PW5; Power-to-exit explicitly unsupported
 - Dependencies: TASK-008 gameplay build and first physical PW5 run
 - Parallel execution: Not independent; shares the application loop, renderer,
   input path, SameBoy core, ROM, PW5, and isolated deployment directories
@@ -104,3 +104,37 @@ one.
 - [`TASK-008 — Play a Game Boy Game`](TASK-008-play-a-game-boy-game.md)
 - [`05.4 — Controlled continuous Libretro rendering research`](../experiments/05.4-libretro-continuous-rendering.md)
 - [`TASK-002 — Investigate synchronous refresh blocking`](TASK-002-synchronous-refresh-blocking.md)
+
+## Implementation — 2026-10-16
+
+The input interfaces now return `enum inkboy_input_result`:
+`INKBOY_INPUT_OK`, `INKBOY_INPUT_STOP`, and `INKBOY_INPUT_ERROR`. EXIT is a
+normal stop request in both warmup and gameplay. Signals and input/emulation/
+presentation errors share the ordered cleanup path. Leaving EXIT cancels the
+gesture even if the contact returns before release.
+
+The application logs stage timings, frame accounting, CPU/RSS, refresh geometry,
+requested waveform, and cleanup results. Completion-wait failures now propagate
+to the final exit status. Conversion and nearest scaling are separately timed;
+host tests compare their output byte-for-byte against TASK-008's fused algorithm.
+
+The default remains full-screen, 1 FPS, flashing AUTO and synchronous completion.
+A separate, compile-time experimental binary permits the required matched
+game-region comparison. It draws the complete composition initially and retains
+the same waveform, flashing flag and cadence for subsequent region updates.
+It is not a production refresh-policy switch.
+
+Host tests, sanitizer checks, Docker host/ARM rebuild and ELF inspection passed.
+After the user enabled escalated execution, isolated deployment and the physical
+PW5 matrix were completed: matched full/region 30/60-second runs, EXIT, SIGINT,
+SIGTERM, SIGHUP and injected touchscreen failure. All refreshes succeeded;
+restoration API success and visual restoration were confirmed. A separate
+held-control run verified core input delivery and visible game response.
+
+The Power probe recorded KEY_POWER on `bd71828-pwrkey`; InkBoy continued running
+until the safety SIGTERM. Firmware suspension and subsequent wake were observed
+and documented. Safe Power-to-exit integration is explicitly unsupported rather
+than inferred from a raw key event. No production refresh-policy change was
+adopted. The complete protocol, measurement definitions, evidence and remaining
+product limitations are recorded in
+[`TASK-009 runtime validation`](../experiments/09-gameplay-runtime.md).
