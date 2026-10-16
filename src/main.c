@@ -20,7 +20,7 @@
 #define WARMUP_FRAMES 180U
 
 static volatile sig_atomic_t stop_signal;
-static uint64_t last_input_poll;
+static struct inkboy_profile_timer last_input_poll;
 static bool poll_after_cleanup;
 
 static void request_stop(int signal_number)
@@ -74,16 +74,17 @@ static void handle_input_event(const struct inkboy_input_event *event,
 
 static enum inkboy_input_result poll_input(struct inkboy_input *input)
 {
-    uint64_t start = inkboy_profile_now();
-    if (last_input_poll != 0U) {
-        inkboy_profile_record(poll_after_cleanup ? INKBOY_PROFILE_INPUT_GAP_CLEAN
-                              : INKBOY_PROFILE_INPUT_GAP, last_input_poll);
+    struct inkboy_profile_timer input_timer =
+        inkboy_profile_timer_start(INKBOY_PROFILE_INPUT);
+    if (last_input_poll.id != 0U) {
+        inkboy_profile_timer_stop_as(last_input_poll, poll_after_cleanup ?
+            INKBOY_PROFILE_INPUT_GAP_CLEAN : INKBOY_PROFILE_INPUT_GAP);
     }
-    last_input_poll = start;
+    last_input_poll = inkboy_profile_timer_start(INKBOY_PROFILE_INPUT_GAP);
     poll_after_cleanup = false;
     enum inkboy_input_result result = inkboy_input_poll(input);
 
-    inkboy_profile_record(INKBOY_PROFILE_INPUT, start);
+    inkboy_profile_timer_stop(input_timer);
     return result;
 }
 
@@ -131,9 +132,10 @@ int main(void)
     int result = EXIT_FAILURE;
 
     stop_signal = 0;
-    last_input_poll = 0U;
+    if (last_input_poll.id != 0U) inkboy_profile_timer_stop(last_input_poll);
+    last_input_poll.id = 0U;
     poll_after_cleanup = false;
-    inkboy_profile_begin("startup");
+    inkboy_profile_startup();
     fprintf(stdout, "runtime core=%s rom=\"%s\" warmup_frames=%u\n",
             INKBOY_CORE_PATH, INKBOY_ROM_PATH, WARMUP_FRAMES);
     if (install_signal_handlers() != 0) {
@@ -148,7 +150,7 @@ int main(void)
         goto cleanup;
     }
 
-    inkboy_profile_begin("warmup");
+    inkboy_profile_warmup();
     for (unsigned index = 0U; index < WARMUP_FRAMES && !stop_signal; index++) {
         enum inkboy_input_result input_result = poll_input(input);
 
@@ -172,9 +174,9 @@ int main(void)
     if (stop_signal) {
         goto signaled;
     }
-    inkboy_profile_report("summary", "warmup-complete", 0);
-    inkboy_profile_begin("gameplay");
-    last_input_poll = 0U;
+    if (last_input_poll.id != 0U) inkboy_profile_timer_stop(last_input_poll);
+    last_input_poll.id = 0U;
+    inkboy_profile_begin_gameplay();
     reason = "presentation-error";
     if (!inkboy_libretro_frame(emulator, &frame) ||
         inkboy_renderer_present_frame(renderer, &frame) < 0) {
@@ -187,7 +189,7 @@ int main(void)
     emulation_fps = inkboy_libretro_fps(emulator);
     next_display = (uint64_t)next_run.tv_sec * UINT64_C(1000000000) +
                    (uint64_t)next_run.tv_nsec + display_period;
-    last_input_poll = 0U;
+    last_input_poll.id = 0U;
     while (!stop_signal) {
         struct timespec now;
         enum inkboy_input_result input_result = poll_input(input);
@@ -252,7 +254,7 @@ signaled:
     reason = signal_reason();
     result = EXIT_SUCCESS;
 cleanup:
-    inkboy_profile_report("summary", reason, result);
+    inkboy_profile_finish(reason, result);
     fprintf(stdout, "cleanup stage=input_begin\n");
     inkboy_input_close(input);
     fprintf(stdout, "cleanup stage=input_end\ncleanup stage=core_begin\n");

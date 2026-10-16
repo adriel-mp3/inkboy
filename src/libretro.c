@@ -52,7 +52,7 @@ struct inkboy_libretro {
     size_t pitch;
     bool frame_ready;
     bool frame_pending;
-    uint64_t control_changed_at;
+    struct inkboy_profile_timer control_change_timer;
     double fps;
     uint16_t buttons;
 };
@@ -97,26 +97,30 @@ static void video_refresh(const void *data, unsigned width, unsigned height,
     size_t row_bytes;
     size_t bytes;
     uint32_t *pixels;
-    uint64_t start = inkboy_profile_now();
+    struct inkboy_profile_timer timer =
+        inkboy_profile_timer_start(INKBOY_PROFILE_CALLBACK_COPY);
 
-    inkboy_profile.callbacks++;
     if (data == NULL) {
-        inkboy_profile.duplicate_frames++;
+        inkboy_profile_timer_cancel(timer);
+        inkboy_profile_frame_received(INKBOY_PROFILE_FRAME_DUPLICATE);
         return;
     }
     if (active_emulator == NULL || width == 0U ||
         height == 0U || width > 1024U || height > 1024U ||
         (size_t)height > SIZE_MAX / ((size_t)width * sizeof(uint32_t))) {
-        inkboy_profile.invalid_frames++;
+        inkboy_profile_timer_cancel(timer);
+        inkboy_profile_frame_received(INKBOY_PROFILE_FRAME_INVALID);
         return;
     }
     row_bytes = (size_t)width * sizeof(uint32_t);
     if (pitch < row_bytes || (size_t)height > SIZE_MAX / row_bytes) {
-        inkboy_profile.invalid_frames++;
+        inkboy_profile_timer_cancel(timer);
+        inkboy_profile_frame_received(INKBOY_PROFILE_FRAME_INVALID);
         return;
     }
     if (pitch > SIZE_MAX / height) {
-        inkboy_profile.invalid_frames++;
+        inkboy_profile_timer_cancel(timer);
+        inkboy_profile_frame_received(INKBOY_PROFILE_FRAME_INVALID);
         return;
     }
     bytes = (size_t)height * row_bytes;
@@ -124,7 +128,8 @@ static void video_refresh(const void *data, unsigned width, unsigned height,
     if (active_emulator->width != width || active_emulator->height != height) {
         pixels = malloc(bytes);
         if (pixels == NULL) {
-            inkboy_profile.invalid_frames++;
+            inkboy_profile_timer_cancel(timer);
+            inkboy_profile_frame_received(INKBOY_PROFILE_FRAME_INVALID);
             return;
         }
         free(active_emulator->pixels);
@@ -140,11 +145,11 @@ static void video_refresh(const void *data, unsigned width, unsigned height,
     }
     active_emulator->frame_ready = true;
     if (active_emulator->frame_pending) {
-        inkboy_profile.superseded_frames++;
+        inkboy_profile_frame_superseded();
     }
     active_emulator->frame_pending = true;
-    inkboy_profile.valid_frames++;
-    inkboy_profile_record(INKBOY_PROFILE_CALLBACK_COPY, start);
+    inkboy_profile_frame_received(INKBOY_PROFILE_FRAME_VALID);
+    inkboy_profile_timer_stop(timer);
 }
 
 static void audio_sample(int16_t left, int16_t right)
@@ -171,10 +176,9 @@ static int16_t input_state(unsigned port, unsigned device, unsigned index,
         index != 0U || (id >= 16U && id != RETRO_DEVICE_ID_JOYPAD_MASK)) {
         return 0;
     }
-    if (active_emulator->control_changed_at != 0U) {
-        inkboy_profile_record(INKBOY_PROFILE_INPUT_TO_STATE,
-                              active_emulator->control_changed_at);
-        active_emulator->control_changed_at = 0U;
+    if (active_emulator->control_change_timer.id != 0U) {
+        inkboy_profile_timer_stop(active_emulator->control_change_timer);
+        active_emulator->control_change_timer.id = 0U;
     }
     if (id == RETRO_DEVICE_ID_JOYPAD_MASK) {
         return (int16_t)active_emulator->buttons;
@@ -309,10 +313,11 @@ int inkboy_libretro_run(struct inkboy_libretro *emulator)
         return -1;
     }
     emulator->frame_ready = false;
-    uint64_t start = inkboy_profile_now();
+    struct inkboy_profile_timer timer =
+        inkboy_profile_timer_start(INKBOY_PROFILE_EMULATION);
     emulator->api.run();
-    inkboy_profile.runs++;
-    inkboy_profile_record(INKBOY_PROFILE_EMULATION, start);
+    inkboy_profile_emulation_ran();
+    inkboy_profile_timer_stop(timer);
     return 0;
 }
 
@@ -347,8 +352,9 @@ void inkboy_libretro_set_control(struct inkboy_libretro *emulator,
     if (((emulator->buttons & (uint16_t)(1U << (unsigned)id)) != 0U) == pressed) {
         return;
     }
-    if (emulator->control_changed_at == 0U) {
-        emulator->control_changed_at = inkboy_profile_now();
+    if (emulator->control_change_timer.id == 0U) {
+        emulator->control_change_timer =
+            inkboy_profile_timer_start(INKBOY_PROFILE_INPUT_TO_STATE);
     }
     if (pressed) {
         emulator->buttons |= (uint16_t)(1U << (unsigned)id);
