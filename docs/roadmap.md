@@ -12,7 +12,7 @@ from different milestones.
 | M1 | Static PW5 renderer with normal restoration | Complete | [`docs/experiments/02-rendering.md`](experiments/02-rendering.md) |
 | M2 | Touch input evidence | Complete as a standalone probe | [`docs/experiments/03-touch-input.md`](experiments/03-touch-input.md) |
 | M3 | SameBoy and Libretro feasibility probes | Complete as isolated probes | [`docs/experiments/05-libretro-probe.md`](experiments/05-libretro-probe.md), [`docs/experiments/05.3-libretro-frame.md`](experiments/05.3-libretro-frame.md) |
-| M4 | Continuous rendering and performance research | In progress | [`docs/experiments/05.4-libretro-continuous-rendering.md`](experiments/05.4-libretro-continuous-rendering.md); TASK-001 |
+| M4 | Continuous rendering and performance research | In progress | [`docs/experiments/05.4-libretro-continuous-rendering.md`](experiments/05.4-libretro-continuous-rendering.md); TASK-001; [`TASK-010`](tasks/TASK-010-reduce-flashing-and-improve-fluidity.md) |
 | M5 | Playable Prototype | Complete | TASK-007/008/009 validated on PW5: game/control response, sustained execution and restoration. Performance and Power-integration limitations remain documented in [`TASK-009`](experiments/09-gameplay-runtime.md). |
 
 Milestone status describes the state of the objective, not whether every
@@ -47,3 +47,4 @@ that can be implemented, tested, and reviewed independently.
 - [`TASK-007 — Modularize Application`](tasks/TASK-007-modularize-application.md) — Complete; modular runtime physically validated through TASK-009.
 - [`TASK-008 — Play a Game Boy Game`](tasks/TASK-008-play-a-game-boy-game.md) — Complete; game/control response and shutdown physically validated through TASK-009.
 - [`TASK-009 — Profile and Stabilize PW5 Gameplay Runtime`](tasks/TASK-009-profile-and-stabilize-gameplay-runtime.md) — Complete; measured full/region comparisons and safe EXIT/signal/error cleanup; Power-to-exit explicitly unsupported.
+- [`TASK-010 — Reduce flashing and improve gameplay fluidity`](tasks/TASK-010-reduce-flashing-and-improve-fluidity.md) — In progress; regional AUTO/GC16 implemented and screened on PW5; no 2/4 FPS profile meets the polling limit. Default preserved; further tests stopped at the user’s request.

@@ -18,6 +18,11 @@ enum inkboy_profile_stage {
     INKBOY_PROFILE_REFRESH_SUBMIT,
     INKBOY_PROFILE_REFRESH_WAIT,
     INKBOY_PROFILE_INPUT_TO_STATE,
+    INKBOY_PROFILE_INITIAL_SUBMIT,
+    INKBOY_PROFILE_INITIAL_WAIT,
+    INKBOY_PROFILE_CLEAN_SUBMIT,
+    INKBOY_PROFILE_CLEAN_WAIT,
+    INKBOY_PROFILE_INPUT_GAP_CLEAN,
     INKBOY_PROFILE_STAGE_COUNT
 };
 
@@ -37,8 +42,15 @@ struct inkboy_profile {
     uint64_t invalid_frames;
     uint64_t superseded_frames;
     uint64_t presentations;
+    uint64_t initial_presentations;
+    uint64_t normal_presentations;
+    uint64_t cleanups;
+    uint64_t unchanged_images;
     uint64_t refresh_attempts;
     uint64_t refresh_failures;
+    uint64_t initial_refresh_failures;
+    uint64_t normal_refresh_failures;
+    uint64_t cleanup_refresh_failures;
 };
 
 extern struct inkboy_profile inkboy_profile;

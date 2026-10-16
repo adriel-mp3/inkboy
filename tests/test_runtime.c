@@ -38,6 +38,9 @@ static bool fail_restore;
 static unsigned cleanup_count;
 static char cleanup_order[4];
 static long fake_ns;
+static long presentation_block_ns;
+static long last_present_ns;
+static uint64_t expected_next_ns;
 
 static int fake_clock_gettime(clockid_t clock_id, struct timespec *value)
 {
@@ -137,12 +140,23 @@ const struct inkboy_layout *inkboy_renderer_layout(const struct inkboy_renderer 
     return &fake_layout;
 }
 
-int inkboy_renderer_present_frame(struct inkboy_renderer *renderer,
+enum inkboy_present_result inkboy_renderer_present_frame(struct inkboy_renderer *renderer,
                                   const struct inkboy_video_frame *frame)
 {
     (void)renderer; (void)frame;
     present_count++;
-    return present_count == fail_at_present ? -1 : 0;
+    if (present_count > 1U) {
+        assert(fake_ns > last_present_ns);
+        assert((uint64_t)fake_ns >= expected_next_ns);
+    }
+    fake_ns += presentation_block_ns;
+    last_present_ns = fake_ns;
+    uint64_t period = UINT64_C(1000000000) / inkboy_presentation_policy().fps;
+    /* The loop must sample the clock again after this blocking adapter. */
+    expected_next_ns = present_count == 1U ? (uint64_t)fake_ns + 20000000U + period :
+        inkboy_next_deadline(expected_next_ns, (uint64_t)fake_ns + 20000000U, period);
+    return present_count == fail_at_present ? INKBOY_PRESENT_ERROR :
+        present_count == 1U ? INKBOY_PRESENT_INITIAL : INKBOY_PRESENT_PARTIAL;
 }
 
 int inkboy_renderer_close(struct inkboy_renderer *renderer)
@@ -160,7 +174,8 @@ static void reset(void)
     fail_at_present = fail_at_run = 0U;
     fail_open = fail_restore = signal_in_sleep = false;
     signal_at_poll = 0;
-    fake_ns = 0;
+    fake_ns = presentation_block_ns = last_present_ns = 0;
+    expected_next_ns = 0U;
     memset(cleanup_order, 0, sizeof(cleanup_order));
 }
 
@@ -173,6 +188,13 @@ static void check(int expected)
 
 int main(void)
 {
+    assert(inkboy_next_deadline(100U, 99U, 25U) == 100U);
+    assert(inkboy_next_deadline(100U, 100U, 25U) == 125U);
+    assert(inkboy_next_deadline(100U, 876U, 25U) == 900U);
+    /* Multi-period blocking refreshes discard all expired display deadlines. */
+    reset(); stop_at_poll = 240U; presentation_block_ns = 3500000000L;
+    check(EXIT_SUCCESS);
+    assert(present_count > 1U && present_count < 30U);
     reset(); check(EXIT_SUCCESS);
     assert(run_count == stop_at_poll - 1U && present_count == 1U);
     reset(); stop_at_poll = 1U; check(EXIT_SUCCESS);

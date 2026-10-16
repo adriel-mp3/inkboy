@@ -67,7 +67,8 @@ void inkboy_profile_report(const char *event, const char *reason, int status)
     static const char *const names[] = {
         "emulation", "input_poll", "input_gap", "callback_copy", "convert", "scale",
         "compose", "region_pack", "fbink_draw", "refresh_submit", "refresh_wait",
-        "input_to_state"
+        "input_to_state", "initial_submit", "initial_wait", "clean_submit",
+        "clean_wait", "input_gap_clean"
     };
     struct rusage usage = {0};
     struct timespec utc = {0};
@@ -109,6 +110,16 @@ void inkboy_profile_report(const char *event, const char *reason, int status)
             elapsed > 0.0 ? inkboy_profile.presentations / elapsed : 0.0,
             elapsed > 0.0 ? (cpu_seconds(&usage) - initial_cpu) * 100.0 / elapsed : 0.0,
             rss_kib, usage.ru_maxrss, reason, status);
+    fprintf(stdout, " initial_presentations=%" PRIu64 " normal_presentations=%" PRIu64
+            " cleanups=%" PRIu64 " unchanged_images=%" PRIu64
+            " initial_refresh_failures=%" PRIu64 " normal_refresh_failures=%" PRIu64
+            " cleanup_refresh_failures=%" PRIu64 " normal_fps=%.3f cleanup_fps=%.3f",
+            inkboy_profile.initial_presentations, inkboy_profile.normal_presentations,
+            inkboy_profile.cleanups, inkboy_profile.unchanged_images,
+            inkboy_profile.initial_refresh_failures, inkboy_profile.normal_refresh_failures,
+            inkboy_profile.cleanup_refresh_failures,
+            elapsed > 0.0 ? inkboy_profile.normal_presentations / elapsed : 0.0,
+            elapsed > 0.0 ? inkboy_profile.cleanups / elapsed : 0.0);
     for (unsigned index = 0U; index < INKBOY_PROFILE_STAGE_COUNT; index++) {
         const struct inkboy_profile_sample *sample = &inkboy_profile.stages[index];
 

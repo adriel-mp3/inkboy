@@ -18,10 +18,10 @@
 #define INKBOY_ROM_PATH \
     "/mnt/us/games/Pokemon - Yellow Version - Special Pikachu Edition (USA, Europe) (GBC,SGB Enhanced).gb"
 #define WARMUP_FRAMES 180U
-#define DISPLAY_FPS 1.0
 
 static volatile sig_atomic_t stop_signal;
 static uint64_t last_input_poll;
+static bool poll_after_cleanup;
 
 static void request_stop(int signal_number)
 {
@@ -76,9 +76,11 @@ static enum inkboy_input_result poll_input(struct inkboy_input *input)
 {
     uint64_t start = inkboy_profile_now();
     if (last_input_poll != 0U) {
-        inkboy_profile_record(INKBOY_PROFILE_INPUT_GAP, last_input_poll);
+        inkboy_profile_record(poll_after_cleanup ? INKBOY_PROFILE_INPUT_GAP_CLEAN
+                              : INKBOY_PROFILE_INPUT_GAP, last_input_poll);
     }
     last_input_poll = start;
+    poll_after_cleanup = false;
     enum inkboy_input_result result = inkboy_input_poll(input);
 
     inkboy_profile_record(INKBOY_PROFILE_INPUT, start);
@@ -121,13 +123,16 @@ int main(void)
     struct inkboy_input *input = NULL;
     struct inkboy_video_frame frame;
     struct timespec next_run;
-    struct timespec next_display;
+    uint64_t next_display;
+    const struct inkboy_presentation_policy policy = inkboy_presentation_policy();
+    const uint64_t display_period = UINT64_C(1000000000) / policy.fps;
     double emulation_fps;
     const char *reason = "initialization-error";
     int result = EXIT_FAILURE;
 
     stop_signal = 0;
     last_input_poll = 0U;
+    poll_after_cleanup = false;
     inkboy_profile_begin("startup");
     fprintf(stdout, "runtime core=%s rom=\"%s\" warmup_frames=%u\n",
             INKBOY_CORE_PATH, INKBOY_ROM_PATH, WARMUP_FRAMES);
@@ -172,7 +177,7 @@ int main(void)
     last_input_poll = 0U;
     reason = "presentation-error";
     if (!inkboy_libretro_frame(emulator, &frame) ||
-        inkboy_renderer_present_frame(renderer, &frame) != 0) {
+        inkboy_renderer_present_frame(renderer, &frame) < 0) {
         goto cleanup;
     }
     reason = "clock-error";
@@ -180,7 +185,9 @@ int main(void)
         goto cleanup;
     }
     emulation_fps = inkboy_libretro_fps(emulator);
-    next_display = add_seconds(next_run, 1.0 / DISPLAY_FPS);
+    next_display = (uint64_t)next_run.tv_sec * UINT64_C(1000000000) +
+                   (uint64_t)next_run.tv_nsec + display_period;
+    last_input_poll = 0U;
     while (!stop_signal) {
         struct timespec now;
         enum inkboy_input_result input_result = poll_input(input);
@@ -214,13 +221,30 @@ int main(void)
         if (stop_signal) {
             break;
         }
-        /* Retain TASK-008's display deadlines and synchronous ordering. */
-        if (!before(now, next_display) && inkboy_libretro_frame(emulator, &frame)) {
-            if (inkboy_renderer_present_frame(renderer, &frame) != 0) {
-                reason = "presentation-error";
+        /* Sleep and synchronous presentation can both invalidate prior time. */
+        if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) {
+            reason = "clock-error";
+            goto cleanup;
+        }
+        uint64_t now_ns = (uint64_t)now.tv_sec * UINT64_C(1000000000) + (uint64_t)now.tv_nsec;
+        if (now_ns >= next_display) {
+            if (inkboy_libretro_frame(emulator, &frame)) {
+                enum inkboy_present_result presented = inkboy_renderer_present_frame(renderer, &frame);
+                if (presented < 0) {
+                    reason = "presentation-error";
+                    goto cleanup;
+                }
+                poll_after_cleanup = presented == INKBOY_PRESENT_CLEANUP ||
+                                     presented == INKBOY_PRESENT_INITIAL;
+            }
+            if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) {
+                reason = "clock-error";
                 goto cleanup;
             }
-            next_display = add_seconds(now, 1.0 / DISPLAY_FPS);
+            now_ns = (uint64_t)now.tv_sec * UINT64_C(1000000000) + (uint64_t)now.tv_nsec;
+            next_display = inkboy_next_deadline(next_display, now_ns, display_period);
+            /* Drop emulation debt too; no burst after a blocking refresh. */
+            if (before(next_run, now)) next_run = now;
         }
     }
 

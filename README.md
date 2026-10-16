@@ -78,6 +78,12 @@ without replacing TASK-008 deployments. These builds use the isolated
 measurement definitions, local/physical results and the repeatable device protocol are
 in [the TASK-009 runtime report](docs/experiments/09-gameplay-runtime.md).
 
+TASK-010 adds isolated regional AUTO/GC16 experiments at 1/2/4 FPS (8 FPS is
+exploratory), with 30/60-second cleanups. `make docker-host-task010` validates
+host profiles; `make deploy-task010` stages ARM profiles without overwriting
+TASK-009 artifacts. The default stays unchanged until physical acceptance;
+see the [TASK-010 protocol and results](docs/experiments/10-presentation-fluidity.md).
+
 ## Stage 5.4 benchmark status
 
 Stage 5.4.4 is complete and physically validated on a Kindle Paperwhite 5
