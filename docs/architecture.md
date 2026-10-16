@@ -8,9 +8,11 @@ display, prepare the monochrome composition, submit it through FBInk, wait for
 the e-ink refresh to complete, and restore the previous framebuffer on normal
 termination.
 
-The architecture is intentionally close to the hardware boundary. There is no
-desktop window system, managed runtime, emulator, game engine, or background
-service in the Stage 2 application.
+The architecture is intentionally close to the hardware boundary. The current
+M5 application uses a dynamically loaded pinned SameBoy Libretro core, virtual
+touchscreen controls and a single-threaded application loop. Gameplay/control
+response and safe shutdown were validated on PW5 through TASK-009; the earlier Stage 2 renderer remains a validated
+historical baseline. There is no desktop window system or background service.
 
 ## Why C
 
@@ -69,11 +71,13 @@ ARM hard-float executable. Deployment places the application under
 `/mnt/us/inkboy`; Docker, the SDK, and host conversion tools are not required
 on the Kindle. The root filesystem is not modified.
 
-The continuous Libretro/SameBoy probe under `tools/` is a separate research
-tool. It measures emulation and live FBInk behavior but is not part of the
-Stage 2 InkBoy application architecture.
+The continuous Libretro/SameBoy probe under `tools/` remains a separate research
+tool. The M5 application has its own Libretro adapter in `src/` and does not
+run or modify the validated probes. TASK-009 instrumentation and isolated
+comparison builds are described in the
+[runtime validation report](experiments/09-gameplay-runtime.md).
 
-## Runtime flow
+## Historical Stage 2 runtime flow
 
 1. Open and initialize FBInk and query the Kindle display geometry.
 2. Save the current framebuffer with `fbink_dump`.
@@ -85,6 +89,23 @@ Stage 2 InkBoy application architecture.
 
 This flow favors deterministic ownership and safe restoration over animation,
 throughput, or general-purpose UI features.
+
+## M5 gameplay runtime flow
+
+The application initializes FBInk, the pinned core and input, then runs 180
+warmup frames with input polling. It selects the latest core frame, composes
+the screen, draws it through FBInk, submits a full flashing AUTO refresh, and
+waits synchronously. The loop polls input, runs the core with nominal pacing,
+and presents at the retained conservative 1 FPS cadence. Conversion and nearest
+scaling have separate measurement boundaries and retain TASK-008 pixel output.
+
+The input API uses an enum to distinguish continued execution, a normal EXIT
+request and an input error. EXIT/signals/errors converge on ordered cleanup:
+release input, unload the core, restore/wait/free the saved framebuffer and close
+FBInk. Completion failures propagate to process status. Profiling logs are sent
+to stdout/stderr, including actual refresh rectangles and restoration results.
+An independently built experimental executable measures game-region updates;
+the standard executable continues using full-screen presentation.
 
 ## Dependency boundary
 

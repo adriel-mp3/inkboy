@@ -1,4 +1,5 @@
 #include "render.h"
+#include "profile.h"
 
 #include "duck_bitmap.h"
 #include "fbink.h"
@@ -28,7 +29,32 @@ struct inkboy_renderer {
     struct inkboy_layout layout;
     uint8_t *screen_buffer;
     size_t screen_buffer_size;
+    uint8_t *gray_buffer;
+    size_t gray_buffer_size;
+    uint8_t *region_buffer;
+    size_t region_buffer_size;
+    uint8_t *last_image;
+    size_t last_image_size;
+    struct inkboy_rect last_game_rect;
+    unsigned last_width, last_height;
+    bool frame_presented;
+    uint64_t last_cleanup;
+    struct inkboy_presentation_policy policy;
 };
+
+/* A signal may interrupt the ioctl while the update is still in flight.
+ * Finish waiting for the same marker before restoring or reusing buffers. */
+static int
+wait_for_complete(int fbfd)
+{
+    int result;
+
+    do {
+        errno = 0;
+        result = fbink_wait_for_complete(fbfd, LAST_MARKER);
+    } while (result != 0 && (result == -EINTR || errno == EINTR));
+    return result;
+}
 
 static const uint8_t title_glyphs[6U][TITLE_GLYPH_HEIGHT] = {
     /* I */ {0x1f, 0x04, 0x04, 0x04, 0x04, 0x04, 0x1f},
@@ -282,62 +308,52 @@ draw_controls(uint8_t *buffer, const struct inkboy_layout *layout)
     draw_centered_label(buffer, layout->width, &layout->start, "START", 3U);
 }
 
-static void
-draw_game_frame(uint8_t *buffer, const struct inkboy_layout *layout,
+static int
+draw_game_frame(struct inkboy_renderer *renderer, uint8_t *buffer,
                 const struct inkboy_video_frame *frame)
 {
-    uint32_t output_width = layout->duck_size;
-    uint32_t output_height = layout->duck_size;
-    uint32_t scaled_width = output_width;
-    uint32_t scaled_height = output_height;
-    uint32_t origin_x;
-    uint32_t origin_y;
+    struct inkboy_rect rect;
+    size_t size;
+    uint64_t start;
+    int result;
 
-    if (frame == NULL || frame->pixels == NULL || frame->width == 0U ||
-        frame->height == 0U || frame->pitch < (size_t)frame->width * 4U) {
-        return;
+    if (inkboy_frame_rect(&renderer->layout, frame, &rect) != 0 ||
+        inkboy_buffer_size(frame->width, frame->height, &size) != 0) {
+        return -1;
     }
-    if ((uint64_t)scaled_width * frame->height <=
-        (uint64_t)scaled_height * frame->width) {
-        scaled_height = (uint32_t)(((uint64_t)scaled_width * frame->height) /
-                                   frame->width);
-    } else {
-        scaled_width = (uint32_t)(((uint64_t)scaled_height * frame->width) /
-                                  frame->height);
-    }
-    origin_x = layout->duck_x + (output_width - scaled_width) / 2U;
-    origin_y = layout->duck_y + (output_height - scaled_height) / 2U;
-    for (uint32_t y = 0U; y < scaled_height; y++) {
-        unsigned source_y = (unsigned)(((uint64_t)y * frame->height) /
-                                       scaled_height);
-        const unsigned char *source_row =
-            (const unsigned char *)frame->pixels + (size_t)source_y * frame->pitch;
-        for (uint32_t x = 0U; x < scaled_width; x++) {
-            unsigned source_x = (unsigned)(((uint64_t)x * frame->width) /
-                                           scaled_width);
-            uint32_t pixel;
-            uint8_t red;
-            uint8_t green;
-            uint8_t blue;
-            uint8_t gray;
+    start = inkboy_profile_now();
+    if (renderer->gray_buffer_size < size) {
+        uint8_t *storage = realloc(renderer->gray_buffer, size);
 
-            memcpy(&pixel, source_row + (size_t)source_x * 4U, sizeof(pixel));
-            red = (uint8_t)(pixel >> 16U);
-            green = (uint8_t)(pixel >> 8U);
-            blue = (uint8_t)pixel;
-            gray = (uint8_t)((77U * red + 150U * green + 29U * blue + 128U) >> 8U);
-            set_pixel(buffer, layout->width, origin_x + x, origin_y + y, gray);
+        if (storage == NULL) {
+            return -1;
         }
+        renderer->gray_buffer = storage;
+        renderer->gray_buffer_size = size;
     }
+    result = inkboy_frame_convert(frame, renderer->gray_buffer, size);
+    inkboy_profile_record(INKBOY_PROFILE_CONVERT, start);
+    if (result != 0) {
+        return result;
+    }
+    start = inkboy_profile_now();
+    result = inkboy_frame_scale(renderer->gray_buffer, frame->width, frame->height,
+                                buffer, renderer->layout.width,
+                                renderer->layout.height, &rect);
+    inkboy_profile_record(INKBOY_PROFILE_SCALE, start);
+    return result;
 }
 
 static int
-build_screen(const struct inkboy_layout *layout,
+build_screen(struct inkboy_renderer *renderer,
              const struct inkboy_video_frame *frame,
-             uint8_t **buffer_out,
-             uint8_t **storage,
-             size_t *storage_size)
+             uint8_t **buffer_out)
 {
+    const struct inkboy_layout *layout = &renderer->layout;
+    uint8_t **storage = &renderer->screen_buffer;
+    size_t *storage_size = &renderer->screen_buffer_size;
+    uint64_t start = inkboy_profile_now();
+    uint64_t compose_ns;
     size_t buffer_size;
     uint8_t *buffer;
     size_t offset;
@@ -370,14 +386,30 @@ build_screen(const struct inkboy_layout *layout,
     }
 
     draw_title(buffer, layout->width, layout->title_x, layout->title_y);
+    compose_ns = inkboy_profile_now() - start;
     if (frame == NULL) {
         draw_duck(buffer, layout->width, layout->duck_x, layout->duck_y,
                   layout->duck_size);
+    } else if (renderer->policy.mode != INKBOY_REFRESH_FULL_FLASH) {
+        struct inkboy_rect rect;
+        if (inkboy_frame_rect(layout, frame, &rect) != 0) {
+            return -1;
+        }
+        for (uint32_t y = 0U; y < rect.height; y++) {
+            memcpy(buffer + ((size_t)(rect.y + y) * layout->width + rect.x) * 2U,
+                   renderer->region_buffer + (size_t)y * rect.width * 2U,
+                   (size_t)rect.width * 2U);
+        }
     } else {
-        draw_game_frame(buffer, layout, frame);
+        if (draw_game_frame(renderer, buffer, frame) != 0) {
+            return -1;
+        }
     }
+    start = inkboy_profile_now();
     draw_controls(buffer, layout);
     draw_centered_label(buffer, layout->width, &layout->exit, "EXIT", CONTROL_SCALE);
+    /* Composition excludes conversion/scaling; record one sample per frame. */
+    inkboy_profile_record(INKBOY_PROFILE_COMPOSE, start - compose_ns);
     *buffer_out = buffer;
     return 0;
 }
@@ -385,8 +417,13 @@ build_screen(const struct inkboy_layout *layout,
 static void
 free_dump(struct inkboy_renderer *renderer)
 {
-    if (renderer->dump.data != NULL && fbink_free_dump_data(&renderer->dump) != 0) {
-        fprintf(stderr, "inkboy: warning: unable to free framebuffer dump\n");
+    if (renderer->dump.data != NULL) {
+        int result = fbink_free_dump_data(&renderer->dump);
+
+        fprintf(stdout, "cleanup stage=dump_free result=%d\n", result);
+        if (result != 0) {
+            fprintf(stderr, "inkboy: warning: unable to free framebuffer dump\n");
+        }
     }
 }
 
@@ -406,6 +443,7 @@ inkboy_renderer_open(struct inkboy_renderer **renderer_out)
         return -1;
     }
     renderer->fbfd = FBFD_AUTO;
+    renderer->policy = inkboy_presentation_policy();
     renderer->fbfd = fbink_open();
     if (renderer->fbfd < 0) {
         fprintf(stderr, "inkboy: fbink_open failed: %s\n", strerror(errno));
@@ -423,6 +461,14 @@ inkboy_renderer_open(struct inkboy_renderer **renderer_out)
     }
 
     fbink_get_state(&renderer->config, &renderer->state);
+    fprintf(stdout, "display event=open screen=%ux%u viewport=%ux%u origin=%u,%u"
+            " fbink=%s policy=%d display_cap_fps=%u cleanup_s=%llu synchronous=1\n",
+            renderer->state.screen_width, renderer->state.screen_height,
+            renderer->state.view_width, renderer->state.view_height,
+            renderer->state.view_hori_origin, renderer->state.view_vert_origin,
+            fbink_version(), renderer->policy.mode, renderer->policy.fps,
+            (unsigned long long)(renderer->policy.cleanup_ns / UINT64_C(1000000000)));
+    renderer->refresh_config.wfm_mode = WFM_AUTO;
     if (renderer->state.view_width == 0U || renderer->state.view_height == 0U ||
         inkboy_layout_build(&renderer->layout,
                             renderer->state.view_width,
@@ -448,8 +494,7 @@ inkboy_renderer_present(struct inkboy_renderer *renderer)
         inkboy_buffer_size(renderer->state.view_width,
                            renderer->state.view_height,
                            &buffer_size) != 0 ||
-        build_screen(&renderer->layout, NULL, &buffer,
-                     &renderer->screen_buffer, &renderer->screen_buffer_size) != 0) {
+        build_screen(renderer, NULL, &buffer) != 0) {
         return -1;
     }
 
@@ -481,52 +526,210 @@ inkboy_renderer_present(struct inkboy_renderer *renderer)
         fprintf(stderr, "inkboy: unable to refresh the composition: %d\n", result);
         return -1;
     }
-    (void)fbink_wait_for_complete(renderer->fbfd, LAST_MARKER);
+    return wait_for_complete(renderer->fbfd) == 0 ? 0 : -1;
+}
+
+/* Produce only the game image; the complete composition remains cached. */
+static int prepare_region(struct inkboy_renderer *renderer,
+                          const struct inkboy_video_frame *frame,
+                          const struct inkboy_rect *rect)
+{
+    size_t gray_size, region_size;
+    uint8_t *storage;
+    uint64_t start = inkboy_profile_now();
+    struct inkboy_rect local = {0U, 0U, rect->width, rect->height};
+
+    if (inkboy_buffer_size(frame->width, frame->height, &gray_size) != 0 ||
+        inkboy_buffer_size(rect->width, rect->height, &region_size) != 0) return -1;
+    if (renderer->gray_buffer_size < gray_size) {
+        storage = realloc(renderer->gray_buffer, gray_size);
+        if (storage == NULL) return -1;
+        renderer->gray_buffer = storage;
+        renderer->gray_buffer_size = gray_size;
+    }
+    if (inkboy_frame_convert(frame, renderer->gray_buffer, gray_size) != 0) return -1;
+    inkboy_profile_record(INKBOY_PROFILE_CONVERT, start);
+    start = inkboy_profile_now();
+    if (renderer->region_buffer_size < region_size) {
+        storage = realloc(renderer->region_buffer, region_size);
+        if (storage == NULL) return -1;
+        renderer->region_buffer = storage;
+        renderer->region_buffer_size = region_size;
+    }
+    if (inkboy_frame_scale(renderer->gray_buffer, frame->width, frame->height,
+                           renderer->region_buffer, rect->width, rect->height,
+                           &local) != 0) return -1;
+    inkboy_profile_record(INKBOY_PROFILE_SCALE, start);
     return 0;
 }
 
-int
+enum inkboy_present_result
 inkboy_renderer_present_frame(struct inkboy_renderer *renderer,
                               const struct inkboy_video_frame *frame)
 {
     uint8_t *buffer = NULL;
     size_t buffer_size;
     int result;
+    uint64_t start;
+    bool full_screen;
+    bool experimental;
+    bool geometry_changed;
+    FBInkRect draw_rect;
+    struct inkboy_rect game_rect;
+    uint32_t draw_width, draw_height;
+    short draw_x = 0, draw_y = 0;
+    enum inkboy_present_result kind;
+    enum inkboy_profile_stage submit_stage, wait_stage;
+    uint64_t *kind_failures;
 
     if (renderer == NULL || frame == NULL ||
-        inkboy_buffer_size(renderer->state.view_width,
-                           renderer->state.view_height,
-                           &buffer_size) != 0 ||
-        build_screen(&renderer->layout, frame, &buffer,
-                     &renderer->screen_buffer, &renderer->screen_buffer_size) != 0) {
-        return -1;
+        inkboy_frame_rect(&renderer->layout, frame, &game_rect) != 0) {
+        return INKBOY_PRESENT_ERROR;
     }
+    experimental = renderer->policy.mode != INKBOY_REFRESH_FULL_FLASH;
+    geometry_changed = !renderer->frame_presented ||
+        frame->width != renderer->last_width || frame->height != renderer->last_height ||
+        game_rect.x != renderer->last_game_rect.x ||
+        game_rect.y != renderer->last_game_rect.y ||
+        game_rect.width != renderer->last_game_rect.width ||
+        game_rect.height != renderer->last_game_rect.height;
+    kind = geometry_changed ? INKBOY_PRESENT_INITIAL : INKBOY_PRESENT_PARTIAL;
+    full_screen = true;
+    draw_width = renderer->state.view_width;
+    draw_height = renderer->state.view_height;
+    if (experimental) {
+        if (prepare_region(renderer, frame, &game_rect) != 0) return INKBOY_PRESENT_ERROR;
+        buffer_size = (size_t)game_rect.width * game_rect.height * 2U;
+        if (!geometry_changed) {
+            uint64_t now = inkboy_profile_now();
+            bool cleanup_due = now - renderer->last_cleanup >= renderer->policy.cleanup_ns;
+            if (!cleanup_due && renderer->last_image_size == buffer_size &&
+                memcmp(renderer->region_buffer, renderer->last_image, buffer_size) == 0) {
+                inkboy_profile.unchanged_images++;
+                return INKBOY_PRESENT_UNCHANGED;
+            }
+            kind = cleanup_due ? INKBOY_PRESENT_CLEANUP : INKBOY_PRESENT_PARTIAL;
+            full_screen = false;
+            buffer = renderer->region_buffer;
+            draw_width = game_rect.width;
+            draw_height = game_rect.height;
+            draw_x = (short)game_rect.x;
+            draw_y = (short)game_rect.y;
+        }
+        /* Allocate the comparison cache before submitting any hardware work. */
+        if (renderer->last_image_size != buffer_size) {
+            uint8_t *storage = realloc(renderer->last_image, buffer_size);
+            if (storage == NULL) return INKBOY_PRESENT_ERROR;
+            renderer->last_image = storage;
+            renderer->last_image_size = buffer_size;
+        }
+    }
+    if (full_screen) {
+        if (inkboy_buffer_size(draw_width, draw_height, &buffer_size) != 0 ||
+            build_screen(renderer, frame, &buffer) != 0) return INKBOY_PRESENT_ERROR;
+    }
+#ifdef INKBOY_PROFILE_GAME_REGION
+    /* Keep TASK-009's flashing region diagnostic available independently. */
+    if (!experimental && !geometry_changed) {
+        start = inkboy_profile_now();
+        buffer_size = (size_t)game_rect.width * game_rect.height * 2U;
+        if (renderer->region_buffer_size < buffer_size) {
+            uint8_t *storage = realloc(renderer->region_buffer, buffer_size);
+            if (storage == NULL) return INKBOY_PRESENT_ERROR;
+            renderer->region_buffer = storage;
+            renderer->region_buffer_size = buffer_size;
+        }
+        for (uint32_t y = 0U; y < game_rect.height; y++) {
+            memcpy(renderer->region_buffer + (size_t)y * game_rect.width * 2U,
+                   buffer + ((size_t)(game_rect.y + y) * renderer->layout.width + game_rect.x) * 2U,
+                   (size_t)game_rect.width * 2U);
+        }
+        buffer = renderer->region_buffer;
+        draw_width = game_rect.width;
+        draw_height = game_rect.height;
+        draw_x = (short)game_rect.x;
+        draw_y = (short)game_rect.y;
+        full_screen = false;
+        inkboy_profile_record(INKBOY_PROFILE_REGION_PACK, start);
+    }
+#endif
     if (!renderer->dump_saved) {
         result = fbink_dump(renderer->fbfd, &renderer->dump);
         if (result != 0) {
             fprintf(stderr, "inkboy: unable to save the previous screen: %d\n", result);
-            return -1;
+            return INKBOY_PRESENT_ERROR;
         }
         renderer->dump_saved = true;
     }
     renderer->config.no_refresh = true;
+    start = inkboy_profile_now();
     result = fbink_print_raw_data(renderer->fbfd, buffer,
-                                  (int)renderer->state.view_width,
-                                  (int)renderer->state.view_height,
-                                  buffer_size, 0, 0, &renderer->config);
+                                  (int)draw_width, (int)draw_height,
+                                  buffer_size, draw_x, draw_y, &renderer->config);
+    inkboy_profile_record(INKBOY_PROFILE_DRAW, start);
     if (result != 0) {
         fprintf(stderr, "inkboy: unable to draw the game frame: %d\n", result);
-        return -1;
+        return INKBOY_PRESENT_ERROR;
     }
-    renderer->refresh_config.is_flashing = true;
-    result = fbink_refresh(renderer->fbfd, 0U, 0U, 0U, 0U,
-                           &renderer->refresh_config);
+    renderer->refresh_config.is_flashing = !experimental || kind != INKBOY_PRESENT_PARTIAL;
+    renderer->refresh_config.wfm_mode = experimental && kind == INKBOY_PRESENT_PARTIAL &&
+        renderer->policy.mode == INKBOY_REFRESH_REGION_GC16 ? WFM_GC16 : WFM_AUTO;
+    draw_rect = fbink_get_last_rect(false);
+    if (!full_screen && (draw_rect.width == 0U || draw_rect.height == 0U)) {
+        fprintf(stderr, "inkboy: empty refresh rectangle\n");
+        return INKBOY_PRESENT_ERROR;
+    }
+    fprintf(stdout, "display event=refresh kind=%d draw_rect=%u,%u,%u,%u"
+            " refresh_rect=%u,%u,%u,%u waveform_requested=%s"
+            " waveform_actual=unknown flashing=%u\n", kind,
+            draw_rect.left, draw_rect.top, draw_rect.width, draw_rect.height,
+            full_screen ? 0U : draw_rect.left, full_screen ? 0U : draw_rect.top,
+            full_screen ? renderer->state.screen_width : draw_rect.width,
+            full_screen ? renderer->state.screen_height : draw_rect.height,
+            renderer->refresh_config.wfm_mode == WFM_GC16 ? "GC16" : "AUTO",
+            renderer->refresh_config.is_flashing);
+    submit_stage = kind == INKBOY_PRESENT_INITIAL ? INKBOY_PROFILE_INITIAL_SUBMIT :
+        kind == INKBOY_PRESENT_CLEANUP ? INKBOY_PROFILE_CLEAN_SUBMIT : INKBOY_PROFILE_REFRESH_SUBMIT;
+    wait_stage = kind == INKBOY_PRESENT_INITIAL ? INKBOY_PROFILE_INITIAL_WAIT :
+        kind == INKBOY_PRESENT_CLEANUP ? INKBOY_PROFILE_CLEAN_WAIT : INKBOY_PROFILE_REFRESH_WAIT;
+    kind_failures = kind == INKBOY_PRESENT_INITIAL ? &inkboy_profile.initial_refresh_failures :
+        kind == INKBOY_PRESENT_CLEANUP ? &inkboy_profile.cleanup_refresh_failures :
+        &inkboy_profile.normal_refresh_failures;
+    inkboy_profile.refresh_attempts++;
+    start = inkboy_profile_now();
+    result = full_screen
+        ? fbink_refresh(renderer->fbfd, 0U, 0U, 0U, 0U, &renderer->refresh_config)
+        : fbink_refresh_rect(renderer->fbfd, &draw_rect, &renderer->refresh_config);
+    inkboy_profile_record(submit_stage, start);
     if (result != 0) {
         fprintf(stderr, "inkboy: unable to refresh the game frame: %d\n", result);
-        return -1;
+        inkboy_profile.refresh_failures++;
+        (*kind_failures)++;
+        return INKBOY_PRESENT_ERROR;
     }
-    (void)fbink_wait_for_complete(renderer->fbfd, LAST_MARKER);
-    return 0;
+    start = inkboy_profile_now();
+    result = wait_for_complete(renderer->fbfd);
+    inkboy_profile_record(wait_stage, start);
+    if (result != 0) {
+        fprintf(stderr, "inkboy: refresh completion failed: %d\n", result);
+        inkboy_profile.refresh_failures++;
+        (*kind_failures)++;
+        return INKBOY_PRESENT_ERROR;
+    }
+    if (experimental) {
+        memcpy(renderer->last_image, renderer->region_buffer, renderer->last_image_size);
+    }
+    renderer->frame_presented = true;
+    renderer->last_game_rect = game_rect;
+    renderer->last_width = frame->width;
+    renderer->last_height = frame->height;
+    if (kind != INKBOY_PRESENT_PARTIAL) renderer->last_cleanup = inkboy_profile_now();
+    inkboy_profile.presentations++;
+    if (kind == INKBOY_PRESENT_INITIAL) inkboy_profile.initial_presentations++;
+    if (kind == INKBOY_PRESENT_PARTIAL) inkboy_profile.normal_presentations++;
+    if (kind == INKBOY_PRESENT_CLEANUP) inkboy_profile.cleanups++;
+    inkboy_profile_report(kind == INKBOY_PRESENT_CLEANUP ? "cleanup" : "presentation", "running", 0);
+    return kind;
 }
 
 const struct inkboy_layout *
@@ -551,20 +754,42 @@ inkboy_renderer_close(struct inkboy_renderer *renderer)
         return 0;
     }
     if (renderer->dump_saved) {
+        uint64_t start = inkboy_profile_now();
+
+        renderer->refresh_config.is_flashing = true;
+        renderer->refresh_config.wfm_mode = WFM_AUTO;
         result = fbink_restore(renderer->fbfd, &renderer->refresh_config,
                                 &renderer->dump);
+        fprintf(stdout, "cleanup stage=restore result=%d duration_ms=%.3f\n",
+                result, (inkboy_profile_now() - start) / 1000000.0);
         if (result != 0) {
             fprintf(stderr, "inkboy: warning: screen restoration failed: %d\n", result);
         } else {
-            (void)fbink_wait_for_complete(renderer->fbfd, LAST_MARKER);
+            start = inkboy_profile_now();
+            result = wait_for_complete(renderer->fbfd);
+            fprintf(stdout, "cleanup stage=restore_wait result=%d duration_ms=%.3f\n",
+                    result, (inkboy_profile_now() - start) / 1000000.0);
+            if (result != 0) {
+                fprintf(stderr, "inkboy: screen restoration wait failed: %d\n", result);
+            }
         }
+    } else {
+        fprintf(stdout, "cleanup stage=restore result=not-needed\n");
     }
     free_dump(renderer);
     free(renderer->screen_buffer);
-    if (renderer->fbink_opened && fbink_close(renderer->fbfd) != 0) {
-        fprintf(stderr, "inkboy: warning: unable to close framebuffer\n");
-        if (result == 0) {
-            result = -1;
+    free(renderer->gray_buffer);
+    free(renderer->region_buffer);
+    free(renderer->last_image);
+    if (renderer->fbink_opened) {
+        int close_result = fbink_close(renderer->fbfd);
+
+        fprintf(stdout, "cleanup stage=framebuffer_close result=%d\n", close_result);
+        if (close_result != 0) {
+            fprintf(stderr, "inkboy: warning: unable to close framebuffer\n");
+            if (result == 0) {
+                result = -1;
+            }
         }
     }
     free(renderer);

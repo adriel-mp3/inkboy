@@ -1,7 +1,7 @@
 # TASK-007 — Modularize Application
 
 - Milestone: M5 — Playable Prototype
-- Status: Planned
+- Status: Complete — modular runtime validated on physical PW5 through TASK-009
 - Dependencies: None
 - Parallel execution: Independent of M4 research; suitable for a separate Git worktree, but gameplay integration must wait for this task
 - Coordination: Shares `src/main.c`, `Makefile`, generated build inputs, and the host/Kindle validation flow with future M5 work; preserve the validated renderer, touchscreen behavior, and physical PW5 deployment
@@ -55,5 +55,16 @@ confirms rendering, touchscreen input, and normal framebuffer restoration.
 ## Related experiments or decisions
 
 - [`05.4 — Controlled continuous Libretro rendering research`](../experiments/05.4-libretro-continuous-rendering.md)
+
+## Validation completion — 2026-10-16
+
+The modular renderer, shared layout, input and application lifecycle were
+exercised by TASK-009's physical PW5 runs. Host checks and Docker host/ARM builds
+passed. The user confirmed display, virtual control response, EXIT gesture
+behavior and visual restoration. Signal and injected input-failure cleanup
+also completed successfully. See the
+[TASK-009 evidence](../experiments/09-gameplay-runtime.md). This validates the
+modules in the integrated gameplay runtime; the earlier static duck-screen
+verification remains historical evidence.
 - [`03 — Touch input evidence`](../experiments/03-touch-input.md)
 - [`TASK-008 — Play a Game Boy Game`](TASK-008-play-a-game-boy-game.md)

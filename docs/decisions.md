@@ -10,9 +10,11 @@ funciona está em [`architecture.md`](architecture.md).
   Gambatte-K2.
 - O alvo é o Kindle Paperwhite 5 (11ª geração), firmware 5.19.2, com ARM
   32-bit hard-float.
-- O estágio atual exibe o pato original e o texto `InkBoy` em uma composição
-  monocromática estática.
-- Input, animação, emulação e menus não fazem parte do runtime Stage 2.
+- O Stage 2 validado exibia o pato original e o texto `InkBoy` em uma composição
+  monocromática estática; o protótipo M5 atual integra gameplay via Libretro,
+  touchscreen e profiling. Gameplay, controles e saída com restauração foram
+  validados no PW5 na TASK-009; Power não é uma saída controlada suportada.
+- Menus e configuração de runtime continuam fora do escopo atual.
 
 ## Linguagem e dependências
 
@@ -37,6 +39,9 @@ funciona está em [`architecture.md`](architecture.md).
 - O deployment fica em `/mnt/us/inkboy`; o root filesystem do Kindle não é
   alterado.
 - A arquitetura Stage 2 permanece single-threaded e sem loop de animação.
+- O runtime M5 também é single-threaded, com apresentação full-screen a 1 FPS,
+  AUTO flashing e espera síncrona. A TASK-009 mantém essa política; seu build
+  de região de jogo é experimental e separado do executável padrão.
 
 ## Assets e licenças
 
@@ -52,8 +57,8 @@ funciona está em [`architecture.md`](architecture.md).
 - A negociação de 48 kHz permanece apenas uma opção experimental: melhora o
   custo de emulação, mas apresentou uma regressão repetível no tempo de refresh
   e na quantidade de atualizações do display.
-- O código do SameBoy não é modificado; o probe Libretro em `tools/` é tratado
-  como ferramenta de pesquisa, não como parte automática do runtime Stage 2.
+- O código do SameBoy não é modificado; o probe Libretro em `tools/` continua
+  sendo pesquisa isolada. A integração M5 usa seu próprio adapter em `src/`.
 
 ## Mudanças futuras
 

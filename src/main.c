@@ -2,6 +2,7 @@
 
 #include "input.h"
 #include "libretro.h"
+#include "profile.h"
 #include "render.h"
 
 #include <errno.h>
@@ -11,18 +12,20 @@
 #include <string.h>
 #include <time.h>
 
+#ifndef INKBOY_CORE_PATH
 #define INKBOY_CORE_PATH "/mnt/us/inkboy/task008-gameplay/sameboy_libretro.so"
+#endif
 #define INKBOY_ROM_PATH \
     "/mnt/us/games/Pokemon - Yellow Version - Special Pikachu Edition (USA, Europe) (GBC,SGB Enhanced).gb"
 #define WARMUP_FRAMES 180U
-#define DISPLAY_FPS 1.0
 
-static volatile sig_atomic_t stop_requested;
+static volatile sig_atomic_t stop_signal;
+static uint64_t last_input_poll;
+static bool poll_after_cleanup;
 
 static void request_stop(int signal_number)
 {
-    (void)signal_number;
-    stop_requested = 1;
+    stop_signal = signal_number;
 }
 
 static int install_signal_handlers(void)
@@ -63,28 +66,24 @@ static bool before(struct timespec left, struct timespec right)
 static void handle_input_event(const struct inkboy_input_event *event,
                                void *userdata)
 {
-    struct inkboy_libretro *emulator = userdata;
-
-    if (event == NULL) {
-        return;
+    if (event != NULL) {
+        inkboy_libretro_set_control(userdata, event->control,
+                                    event->phase == INKBOY_INPUT_DOWN);
     }
-    if (event->control == INKBOY_CONTROL_EXIT) {
-        if (event->phase == INKBOY_INPUT_UP) {
-            stop_requested = 1;
-        }
-        return;
-    }
-    inkboy_libretro_set_control(emulator, event->control,
-                                event->phase == INKBOY_INPUT_DOWN);
 }
 
-static int poll_input(struct inkboy_input *input)
+static enum inkboy_input_result poll_input(struct inkboy_input *input)
 {
-    int result = inkboy_input_poll(input);
-
-    if (result < 0) {
-        stop_requested = 1;
+    uint64_t start = inkboy_profile_now();
+    if (last_input_poll != 0U) {
+        inkboy_profile_record(poll_after_cleanup ? INKBOY_PROFILE_INPUT_GAP_CLEAN
+                              : INKBOY_PROFILE_INPUT_GAP, last_input_poll);
     }
+    last_input_poll = start;
+    poll_after_cleanup = false;
+    enum inkboy_input_result result = inkboy_input_poll(input);
+
+    inkboy_profile_record(INKBOY_PROFILE_INPUT, start);
     return result;
 }
 
@@ -93,7 +92,8 @@ static void sleep_until(struct timespec deadline)
     struct timespec now;
     struct timespec remaining;
 
-    if (clock_gettime(CLOCK_MONOTONIC, &now) != 0 || !before(now, deadline)) {
+    if (stop_signal || clock_gettime(CLOCK_MONOTONIC, &now) != 0 ||
+        !before(now, deadline)) {
         return;
     }
     remaining.tv_sec = deadline.tv_sec - now.tv_sec;
@@ -102,7 +102,17 @@ static void sleep_until(struct timespec deadline)
         remaining.tv_sec--;
         remaining.tv_nsec += 1000000000L;
     }
-    while (nanosleep(&remaining, &remaining) != 0 && errno == EINTR) {
+    while (!stop_signal && nanosleep(&remaining, &remaining) != 0 && errno == EINTR) {
+    }
+}
+
+static const char *signal_reason(void)
+{
+    switch (stop_signal) {
+    case SIGINT: return "SIGINT";
+    case SIGTERM: return "SIGTERM";
+    case SIGHUP: return "SIGHUP";
+    default: return "signal";
     }
 }
 
@@ -113,74 +123,147 @@ int main(void)
     struct inkboy_input *input = NULL;
     struct inkboy_video_frame frame;
     struct timespec next_run;
-    struct timespec next_display;
+    uint64_t next_display;
+    const struct inkboy_presentation_policy policy = inkboy_presentation_policy();
+    const uint64_t display_period = UINT64_C(1000000000) / policy.fps;
     double emulation_fps;
-    bool runtime_failed = false;
+    const char *reason = "initialization-error";
     int result = EXIT_FAILURE;
 
+    stop_signal = 0;
+    last_input_poll = 0U;
+    poll_after_cleanup = false;
+    inkboy_profile_begin("startup");
+    fprintf(stdout, "runtime core=%s rom=\"%s\" warmup_frames=%u\n",
+            INKBOY_CORE_PATH, INKBOY_ROM_PATH, WARMUP_FRAMES);
     if (install_signal_handlers() != 0) {
         fprintf(stderr, "inkboy: unable to install signal handlers: %s\n",
                 strerror(errno));
-        return EXIT_FAILURE;
+        goto cleanup;
     }
     if (inkboy_renderer_open(&renderer) != 0 ||
-        inkboy_libretro_open(&emulator, INKBOY_CORE_PATH, INKBOY_ROM_PATH) != 0) {
-        inkboy_libretro_close(emulator);
-        inkboy_renderer_close(renderer);
-        return EXIT_FAILURE;
-    }
-    if (inkboy_input_open(&input, inkboy_renderer_layout(renderer),
+        inkboy_libretro_open(&emulator, INKBOY_CORE_PATH, INKBOY_ROM_PATH) != 0 ||
+        inkboy_input_open(&input, inkboy_renderer_layout(renderer),
                           handle_input_event, emulator) != 0) {
-        inkboy_libretro_close(emulator);
-        inkboy_renderer_close(renderer);
-        return EXIT_FAILURE;
+        goto cleanup;
     }
 
-    for (unsigned frame_index = 0U;
-         frame_index < WARMUP_FRAMES && !stop_requested; frame_index++) {
-        if (poll_input(input) < 0 || inkboy_libretro_run(emulator) != 0) {
-            runtime_failed = true;
-            stop_requested = 1;
+    inkboy_profile_begin("warmup");
+    for (unsigned index = 0U; index < WARMUP_FRAMES && !stop_signal; index++) {
+        enum inkboy_input_result input_result = poll_input(input);
+
+        if (input_result == INKBOY_INPUT_STOP) {
+            reason = "EXIT";
+            result = EXIT_SUCCESS;
+            goto cleanup;
+        }
+        if (input_result == INKBOY_INPUT_ERROR) {
+            reason = "input-error";
+            goto cleanup;
+        }
+        if (stop_signal) {
+            goto signaled;
+        }
+        if (inkboy_libretro_run(emulator) != 0) {
+            reason = "emulation-error";
+            goto cleanup;
         }
     }
-    if (!stop_requested && inkboy_libretro_frame(emulator, &frame) &&
-        inkboy_renderer_present_frame(renderer, &frame) == 0 &&
-        clock_gettime(CLOCK_MONOTONIC, &next_run) == 0) {
-        emulation_fps = inkboy_libretro_fps(emulator);
-        next_display = add_seconds(next_run, 1.0 / DISPLAY_FPS);
-        while (!stop_requested) {
-            struct timespec now;
+    if (stop_signal) {
+        goto signaled;
+    }
+    inkboy_profile_report("summary", "warmup-complete", 0);
+    inkboy_profile_begin("gameplay");
+    last_input_poll = 0U;
+    reason = "presentation-error";
+    if (!inkboy_libretro_frame(emulator, &frame) ||
+        inkboy_renderer_present_frame(renderer, &frame) < 0) {
+        goto cleanup;
+    }
+    reason = "clock-error";
+    if (clock_gettime(CLOCK_MONOTONIC, &next_run) != 0) {
+        goto cleanup;
+    }
+    emulation_fps = inkboy_libretro_fps(emulator);
+    next_display = (uint64_t)next_run.tv_sec * UINT64_C(1000000000) +
+                   (uint64_t)next_run.tv_nsec + display_period;
+    last_input_poll = 0U;
+    while (!stop_signal) {
+        struct timespec now;
+        enum inkboy_input_result input_result = poll_input(input);
 
-            if (poll_input(input) < 0 || inkboy_libretro_run(emulator) != 0) {
-                runtime_failed = true;
-                break;
-            }
-            next_run = add_seconds(next_run, 1.0 / emulation_fps);
-            if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) {
-                runtime_failed = true;
-                break;
-            }
-            if (before(next_run, now)) {
-                next_run = now;
-            } else {
-                sleep_until(next_run);
-            }
-            if (!before(now, next_display) &&
-                inkboy_libretro_frame(emulator, &frame)) {
-                if (inkboy_renderer_present_frame(renderer, &frame) != 0) {
-                    runtime_failed = true;
-                    break;
+        if (input_result == INKBOY_INPUT_STOP) {
+            reason = "EXIT";
+            result = EXIT_SUCCESS;
+            goto cleanup;
+        }
+        if (input_result == INKBOY_INPUT_ERROR) {
+            reason = "input-error";
+            goto cleanup;
+        }
+        if (stop_signal) {
+            break;
+        }
+        if (inkboy_libretro_run(emulator) != 0) {
+            reason = "emulation-error";
+            goto cleanup;
+        }
+        next_run = add_seconds(next_run, 1.0 / emulation_fps);
+        if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) {
+            reason = "clock-error";
+            goto cleanup;
+        }
+        if (before(next_run, now)) {
+            next_run = now;
+        } else {
+            sleep_until(next_run);
+        }
+        if (stop_signal) {
+            break;
+        }
+        /* Sleep and synchronous presentation can both invalidate prior time. */
+        if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) {
+            reason = "clock-error";
+            goto cleanup;
+        }
+        uint64_t now_ns = (uint64_t)now.tv_sec * UINT64_C(1000000000) + (uint64_t)now.tv_nsec;
+        if (now_ns >= next_display) {
+            if (inkboy_libretro_frame(emulator, &frame)) {
+                enum inkboy_present_result presented = inkboy_renderer_present_frame(renderer, &frame);
+                if (presented < 0) {
+                    reason = "presentation-error";
+                    goto cleanup;
                 }
-                next_display = add_seconds(now, 1.0 / DISPLAY_FPS);
+                poll_after_cleanup = presented == INKBOY_PRESENT_CLEANUP ||
+                                     presented == INKBOY_PRESENT_INITIAL;
             }
+            if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) {
+                reason = "clock-error";
+                goto cleanup;
+            }
+            now_ns = (uint64_t)now.tv_sec * UINT64_C(1000000000) + (uint64_t)now.tv_nsec;
+            next_display = inkboy_next_deadline(next_display, now_ns, display_period);
+            /* Drop emulation debt too; no burst after a blocking refresh. */
+            if (before(next_run, now)) next_run = now;
         }
-        result = runtime_failed ? EXIT_FAILURE : EXIT_SUCCESS;
     }
 
+signaled:
+    reason = signal_reason();
+    result = EXIT_SUCCESS;
+cleanup:
+    inkboy_profile_report("summary", reason, result);
+    fprintf(stdout, "cleanup stage=input_begin\n");
     inkboy_input_close(input);
+    fprintf(stdout, "cleanup stage=input_end\ncleanup stage=core_begin\n");
     inkboy_libretro_close(emulator);
+    fprintf(stdout, "cleanup stage=core_end\ncleanup stage=renderer_begin\n");
     if (inkboy_renderer_close(renderer) != 0) {
         result = EXIT_FAILURE;
     }
+    fprintf(stdout, "cleanup stage=renderer_end result=%d\n"
+            "runtime event=final reason=%s signal=%d status=%d\n",
+            result, reason, (int)stop_signal, result);
+    fflush(stdout);
     return result;
 }

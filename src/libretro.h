@@ -12,7 +12,8 @@ int inkboy_libretro_open(struct inkboy_libretro **emulator_out,
                          const char *core_path,
                          const char *rom_path);
 int inkboy_libretro_run(struct inkboy_libretro *emulator);
-bool inkboy_libretro_frame(const struct inkboy_libretro *emulator,
+/* Select the latest frame and acknowledge it for superseded-frame accounting. */
+bool inkboy_libretro_frame(struct inkboy_libretro *emulator,
                            struct inkboy_video_frame *frame);
 double inkboy_libretro_fps(const struct inkboy_libretro *emulator);
 int inkboy_libretro_control_id(enum inkboy_control control);

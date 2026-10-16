@@ -235,9 +235,12 @@ emit_event(struct inkboy_input *input,
 static void
 cancel_primary_control(struct inkboy_input *input)
 {
-    if (inkboy_is_interactive_control(input->primary_control) &&
+    if ((inkboy_is_interactive_control(input->primary_control) ||
+         input->primary_control == INKBOY_CONTROL_EXIT) &&
         !input->primary_cancelled) {
-        emit_event(input, input->primary_control, INKBOY_INPUT_CANCEL, 0U, 0U);
+        if (inkboy_is_interactive_control(input->primary_control)) {
+            emit_event(input, input->primary_control, INKBOY_INPUT_CANCEL, 0U, 0U);
+        }
         input->primary_cancelled = true;
     }
 }
@@ -261,7 +264,7 @@ reset_touch_state(struct inkboy_input *input)
     input->primary_cancelled = false;
 }
 
-static int
+static enum inkboy_input_result
 finish_primary_frame(struct inkboy_input *input, uint32_t x, uint32_t y)
 {
     if (input->primary_new_contact) {
@@ -271,21 +274,20 @@ finish_primary_frame(struct inkboy_input *input, uint32_t x, uint32_t y)
             emit_event(input, input->primary_control, INKBOY_INPUT_DOWN, x, y);
         }
     } else if (input->primary_active &&
-               inkboy_is_interactive_control(input->primary_control) &&
+               (inkboy_is_interactive_control(input->primary_control) ||
+                input->primary_control == INKBOY_CONTROL_EXIT) &&
                !inkboy_control_contains_point(input->layout,
                                               input->primary_control, x, y)) {
         cancel_primary_control(input);
     }
 
     if (!input->primary_released) {
-        return 0;
+        return INKBOY_INPUT_OK;
     }
 
-    if (input->primary_control == INKBOY_CONTROL_EXIT &&
+    bool exit_released = input->primary_control == INKBOY_CONTROL_EXIT &&
         !input->primary_cancelled &&
-        inkboy_control_contains_point(input->layout, INKBOY_CONTROL_EXIT, x, y)) {
-        return 1;
-    }
+        inkboy_control_contains_point(input->layout, INKBOY_CONTROL_EXIT, x, y);
     if (inkboy_is_interactive_control(input->primary_control)) {
         if (!input->primary_cancelled &&
             inkboy_control_contains_point(input->layout,
@@ -299,10 +301,10 @@ finish_primary_frame(struct inkboy_input *input, uint32_t x, uint32_t y)
     input->primary_released = false;
     input->primary_control = INKBOY_CONTROL_NONE;
     input->primary_cancelled = false;
-    return 0;
+    return exit_released ? INKBOY_INPUT_STOP : INKBOY_INPUT_OK;
 }
 
-static int
+static enum inkboy_input_result
 handle_touch_event(struct inkboy_input *input, const struct input_event *event)
 {
     unsigned int slot = input->current_slot;
@@ -310,7 +312,7 @@ handle_touch_event(struct inkboy_input *input, const struct input_event *event)
     if (event->type == EV_SYN && event->code == SYN_DROPPED) {
         cancel_primary_control(input);
         reset_touch_state(input);
-        return 0;
+        return INKBOY_INPUT_OK;
     }
 
     if (input->device.type_b) {
@@ -318,11 +320,11 @@ handle_touch_event(struct inkboy_input *input, const struct input_event *event)
             int64_t selected = (int64_t)event->value - input->device.slot.minimum;
             input->current_slot = selected >= 0 && selected < MAX_TOUCH_SLOTS
                                       ? (unsigned int)selected : MAX_TOUCH_SLOTS;
-            return 0;
+            return INKBOY_INPUT_OK;
         }
         if (slot >= MAX_TOUCH_SLOTS &&
             !(event->type == EV_SYN && event->code == SYN_REPORT)) {
-            return 0;
+            return INKBOY_INPUT_OK;
         }
         if (event->type == EV_ABS && event->code == ABS_MT_POSITION_X) {
             input->raw_x[slot] = event->value;
@@ -355,7 +357,7 @@ handle_touch_event(struct inkboy_input *input, const struct input_event *event)
             }
         }
         if (event->type != EV_SYN || event->code != SYN_REPORT) {
-            return 0;
+            return INKBOY_INPUT_OK;
         }
 
         for (slot = 0U; slot < MAX_TOUCH_SLOTS; slot++) {
@@ -378,7 +380,7 @@ handle_touch_event(struct inkboy_input *input, const struct input_event *event)
             input->released[slot] = false;
             return finish_primary_frame(input, x, y);
         }
-        return 0;
+        return INKBOY_INPUT_OK;
     }
 
     if (event->type == EV_ABS && event->code == ABS_X) {
@@ -414,7 +416,7 @@ handle_touch_event(struct inkboy_input *input, const struct input_event *event)
         input->single_released = false;
         return finish_primary_frame(input, x, y);
     }
-    return 0;
+    return INKBOY_INPUT_OK;
 }
 
 int
@@ -446,13 +448,13 @@ inkboy_input_open(struct inkboy_input **input_out,
     return 0;
 }
 
-static int
+static enum inkboy_input_result
 poll_input(struct inkboy_input *input, int timeout_ms)
 {
     struct pollfd descriptor;
 
     if (input == NULL || input->fd < 0) {
-        return -1;
+        return INKBOY_INPUT_ERROR;
     }
     descriptor.fd = input->fd;
     descriptor.events = POLLIN;
@@ -463,20 +465,20 @@ poll_input(struct inkboy_input *input, int timeout_ms)
 
         if (poll_result < 0) {
             if (errno == EINTR) {
-                return 0;
+                return INKBOY_INPUT_OK;
             }
             fprintf(stderr, "inkboy: touchscreen poll failed: %s\n", strerror(errno));
             cancel_primary_control(input);
-            return -1;
+            return INKBOY_INPUT_ERROR;
         }
         if (poll_result == 0) {
-            return 0;
+            return INKBOY_INPUT_OK;
         }
         if ((descriptor.revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
             fprintf(stderr, "inkboy: touchscreen poll error: 0x%x\n",
                     descriptor.revents);
             cancel_primary_control(input);
-            return -1;
+            return INKBOY_INPUT_ERROR;
         }
 
         for (;;) {
@@ -493,45 +495,46 @@ poll_input(struct inkboy_input *input, int timeout_ms)
                 fprintf(stderr, "inkboy: touchscreen read failed: %s\n",
                         strerror(errno));
                 cancel_primary_control(input);
-                return -1;
+                return INKBOY_INPUT_ERROR;
             }
             if (bytes_read == 0) {
                 cancel_primary_control(input);
-                return -1;
+                return INKBOY_INPUT_ERROR;
             }
             if ((size_t)bytes_read != sizeof(event)) {
                 fprintf(stderr, "inkboy: short touchscreen event read: %zd bytes\n",
                         bytes_read);
                 cancel_primary_control(input);
-                return -1;
+                return INKBOY_INPUT_ERROR;
             }
-            if (handle_touch_event(input, &event) != 0) {
-                return 1;
+            enum inkboy_input_result result = handle_touch_event(input, &event);
+            if (result != INKBOY_INPUT_OK) {
+                return result;
             }
         }
     }
-    return 0;
+    return INKBOY_INPUT_OK;
 }
 
-int
+enum inkboy_input_result
 inkboy_input_wait(struct inkboy_input *input,
                   const volatile sig_atomic_t *stop_requested)
 {
     if (input == NULL || input->fd < 0) {
-        return -1;
+        return INKBOY_INPUT_ERROR;
     }
     while (stop_requested == NULL || !*stop_requested) {
-        int result = poll_input(input, POLL_TIMEOUT_MS);
+        enum inkboy_input_result result = poll_input(input, POLL_TIMEOUT_MS);
 
-        if (result != 0) {
+        if (result != INKBOY_INPUT_OK) {
             return result;
         }
     }
     cancel_primary_control(input);
-    return 0;
+    return INKBOY_INPUT_OK;
 }
 
-int
+enum inkboy_input_result
 inkboy_input_poll(struct inkboy_input *input)
 {
     return poll_input(input, 0);
@@ -545,11 +548,16 @@ inkboy_input_close(struct inkboy_input *input)
     }
     cancel_primary_control(input);
     if (input->fd >= 0) {
-        if (input->grabbed && ioctl(input->fd, EVIOCGRAB, 0) != 0) {
-            fprintf(stderr, "inkboy: warning: unable to release touchscreen: %s\n",
-                    strerror(errno));
+        if (input->grabbed) {
+            int release_result = ioctl(input->fd, EVIOCGRAB, 0);
+            fprintf(stdout, "cleanup stage=touchscreen_release result=%d\n", release_result);
+            if (release_result != 0) {
+                fprintf(stderr, "inkboy: warning: unable to release touchscreen: %s\n",
+                        strerror(errno));
+            }
         }
-        close(input->fd);
+        int close_result = close(input->fd);
+        fprintf(stdout, "cleanup stage=touchscreen_close result=%d\n", close_result);
     }
     free(input);
 }
