@@ -46,3 +46,4 @@ that can be implemented, tested, and reviewed independently.
 - [`TASK-006 — Investigate E-Ink refresh latency regression`](tasks/TASK-006-investigate-48khz-refresh-latency.md) — Complete; 48 kHz remains experimental.
 - [`TASK-007 — Modularize Application`](tasks/TASK-007-modularize-application.md) — Planned.
 - [`TASK-008 — Play a Game Boy Game`](tasks/TASK-008-play-a-game-boy-game.md) — Planned; depends on TASK-007.
+- [`TASK-009 — Profile and Stabilize PW5 Gameplay Runtime`](tasks/TASK-009-profile-and-stabilize-gameplay-runtime.md) — Planned; follows the first TASK-008 physical run.
