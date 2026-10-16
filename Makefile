@@ -13,7 +13,10 @@ KINDLE_SYSROOT ?= $(KINDLE_TC)/arm-kindlehf-linux-gnueabihf/sysroot
 KINDLE_CC   ?= $(KINDLE_TC)/bin/arm-kindlehf-linux-gnueabihf-gcc
 
 COMMON_CFLAGS := -std=c11 -Wall -Wextra -Wpedantic -O2
-SOURCE        := src/main.c
+APP_SOURCES   := src/main.c src/layout.c src/render.c src/input.c
+APP_OBJECTS   := $(addprefix build/obj/$(TARGET)/,$(APP_SOURCES:src/%.c=%.o))
+TEST_SOURCE   := tests/test_layout.c
+TEST_OUTPUT   := build/test-layout
 LIBRETRO_PROBE_SOURCE := tools/libretro_probe.c
 SAMEBOY_DIR   := third_party/sameboy
 SAMEBOY_CORE_HOST := build/sameboy/sameboy_libretro.so
@@ -49,7 +52,7 @@ FBINK_CPPFLAGS := -I$(FBINK_DIR) -D_REENTRANT=1 -D_GNU_SOURCE \
 	-DFBINK_MINIMAL -DFBINK_WITH_IMAGE -DFBINK_WITH_DRAW \
 	-DFBINK_VERSION=\"$(FBINK_VERSION)\"
 
-.PHONY: all docker-image bootstrap docker-build docker-build-libretro-frame docker-build-libretro-live host host-libretro-frame host-libretro-live touch-probe asset sameboy-core-host sameboy-core-kindle libretro-probe-host libretro-probe-kindle deploy-libretro-probe libretro-frame-host libretro-frame-kindle deploy-libretro-frame libretro-live-host libretro-live-kindle deploy-libretro-live libretro-scale-test clean inspect
+.PHONY: all docker-image bootstrap docker-build docker-build-libretro-frame docker-build-libretro-live host host-libretro-frame host-libretro-live touch-probe asset test sameboy-core-host sameboy-core-kindle libretro-probe-host libretro-probe-kindle deploy-libretro-probe libretro-frame-host libretro-frame-kindle deploy-libretro-frame libretro-live-host libretro-live-kindle deploy-libretro-live libretro-scale-test clean inspect
 
 # The default is deliberately the isolated Kindle build. It will stop with a
 # useful message until a Kindle SDK/sysroot has been bootstrapped.
@@ -193,6 +196,13 @@ deploy-libretro-live: libretro-live-kindle
 
 asset: $(ASSET_HEADER)
 
+test: $(TEST_OUTPUT)
+	@$(TEST_OUTPUT)
+
+$(TEST_OUTPUT): $(TEST_SOURCE) src/layout.c src/layout.h
+	@mkdir -p $(BUILD_DIR)
+	$(HOST_CC) $(COMMON_CFLAGS) -Isrc $(TEST_SOURCE) src/layout.c -o $@
+
 $(ASSET_TOOL): tools/svg_to_bitmap.c
 	@mkdir -p $(dir $@)
 	$(HOST_CC) -std=c11 -Wall -Wextra -Wpedantic \
@@ -214,6 +224,10 @@ TOUCH_PROBE_OUTPUT := build/touch_probe
 FBINK_PLATFORM := -DFBINK_FOR_KINDLE
 endif
 
+build/obj/$(TARGET)/%.o: src/%.c
+	@mkdir -p $(dir $@)
+	$(CC) $(COMMON_CFLAGS) -D_POSIX_C_SOURCE=200809L -Isrc -I$(FBINK_DIR) -c $< -o $@
+
 build/fbink/$(TARGET)/%.o: $(FBINK_DIR)/%.c
 	@mkdir -p $(dir $@)
 	$(CC) $(FBINK_CPPFLAGS) $(FBINK_PLATFORM) $(FBINK_CFLAGS) \
@@ -224,9 +238,9 @@ build/libfbink-$(TARGET).a: $(FBINK_OBJECTS)
 	$(AR) rcs $@ $^
 	$(RANLIB) $@
 
-$(OUTPUT): $(SOURCE) $(ASSET_HEADER) build/libfbink-$(TARGET).a
+$(OUTPUT): $(APP_OBJECTS) $(ASSET_HEADER) build/libfbink-$(TARGET).a
 	@mkdir -p $(BUILD_DIR)
-	$(CC) $(COMMON_CFLAGS) -D_POSIX_C_SOURCE=200809L -Isrc -I$(FBINK_DIR) $(SOURCE) \
+	$(CC) $(COMMON_CFLAGS) -D_POSIX_C_SOURCE=200809L -Isrc -I$(FBINK_DIR) $(APP_OBJECTS) \
 		build/libfbink-$(TARGET).a -lm -o $@
 
 $(TOUCH_PROBE_OUTPUT): $(TOUCH_PROBE_SOURCE)
