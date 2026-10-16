@@ -42,3 +42,5 @@ that can be implemented, tested, and reviewed independently.
 - [`TASK-002 — Investigate synchronous refresh blocking`](tasks/TASK-002-synchronous-refresh-blocking.md) — Complete.
 - [`TASK-003 — SameBoy Emulation Performance Investigation`](tasks/TASK-003-sameboy-emulation-performance.md) — Complete.
 - [`TASK-004 — SameBoy profiling tools and instrumentation cost`](tasks/TASK-004-sameboy-profiling-tools.md) — In progress; audio sample-rate experiment complete.
+- [`TASK-005 — Validate 48 kHz audio negotiation with live E-Ink rendering`](tasks/TASK-005-validate-48khz-live-rendering.md) — Complete; 48 kHz not adopted as default.
+- [`TASK-006 — Investigate E-Ink refresh latency regression`](tasks/TASK-006-investigate-48khz-refresh-latency.md) — Complete; 48 kHz remains experimental.
