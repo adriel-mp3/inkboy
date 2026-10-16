@@ -13,7 +13,7 @@ from different milestones.
 | M2 | Touch input evidence | Complete as a standalone probe | [`docs/experiments/03-touch-input.md`](experiments/03-touch-input.md) |
 | M3 | SameBoy and Libretro feasibility probes | Complete as isolated probes | [`docs/experiments/05-libretro-probe.md`](experiments/05-libretro-probe.md), [`docs/experiments/05.3-libretro-frame.md`](experiments/05.3-libretro-frame.md) |
 | M4 | Continuous rendering and performance research | In progress | [`docs/experiments/05.4-libretro-continuous-rendering.md`](experiments/05.4-libretro-continuous-rendering.md); TASK-001 |
-| M5 | Product integration | Not started | Independent frontend tasks may begin while M4 continues |
+| M5 | Playable Prototype | Not started | [`TASK-007 — Modularize Application`](tasks/TASK-007-modularize-application.md); [`TASK-008 — Play a Game Boy Game`](tasks/TASK-008-play-a-game-boy-game.md) |
 
 Milestone status describes the state of the objective, not whether every
 related task is closed. A milestone may remain in progress while independent
@@ -44,3 +44,5 @@ that can be implemented, tested, and reviewed independently.
 - [`TASK-004 — SameBoy profiling tools and instrumentation cost`](tasks/TASK-004-sameboy-profiling-tools.md) — In progress; audio sample-rate experiment complete.
 - [`TASK-005 — Validate 48 kHz audio negotiation with live E-Ink rendering`](tasks/TASK-005-validate-48khz-live-rendering.md) — Complete; 48 kHz not adopted as default.
 - [`TASK-006 — Investigate E-Ink refresh latency regression`](tasks/TASK-006-investigate-48khz-refresh-latency.md) — Complete; 48 kHz remains experimental.
+- [`TASK-007 — Modularize Application`](tasks/TASK-007-modularize-application.md) — Planned.
+- [`TASK-008 — Play a Game Boy Game`](tasks/TASK-008-play-a-game-boy-game.md) — Planned; depends on TASK-007.
