@@ -175,7 +175,7 @@ int main(void)
 
     assert(inkboy_renderer_present_frame(renderer, &frame) == INKBOY_PRESENT_INITIAL);
     assert(inkboy_renderer_present_frame(renderer, &frame) == INKBOY_PRESENT_PARTIAL);
-    assert(inkboy_profile.presentations == 2U && inkboy_profile.refresh_failures == 0U);
+    assert(inkboy_profile_counter_value(INKBOY_PROFILE_PRESENTATIONS) == 2U && inkboy_profile_counter_value(INKBOY_PROFILE_REFRESH_FAILURES) == 0U);
 #ifdef INKBOY_PROFILE_GAME_REGION
     assert(full_refreshes == 1U && region_refreshes == 1U);
 #else
@@ -186,26 +186,26 @@ int main(void)
     renderer = open_renderer();
     wait_interrupted = true;
     assert(inkboy_renderer_present_frame(renderer, &frame) == 0);
-    assert(inkboy_profile.refresh_failures == 0U);
+    assert(inkboy_profile_counter_value(INKBOY_PROFILE_REFRESH_FAILURES) == 0U);
     wait_interrupted = true;
     close_renderer(renderer, 0, "RWWFC");
 
     renderer = open_renderer();
     draw_error = -EIO;
     assert(inkboy_renderer_present_frame(renderer, &frame) < 0);
-    assert(inkboy_profile.refresh_attempts == 0U);
+    assert(inkboy_profile_counter_value(INKBOY_PROFILE_REFRESH_ATTEMPTS) == 0U);
     close_renderer(renderer, 0, "RWFC");
 
     renderer = open_renderer();
     submit_error = -EIO;
     assert(inkboy_renderer_present_frame(renderer, &frame) < 0);
-    assert(inkboy_profile.refresh_failures == 1U && inkboy_profile.presentations == 0U);
+    assert(inkboy_profile_counter_value(INKBOY_PROFILE_REFRESH_FAILURES) == 1U && inkboy_profile_counter_value(INKBOY_PROFILE_PRESENTATIONS) == 0U);
     close_renderer(renderer, 0, "RWFC");
 
     renderer = open_renderer();
     wait_error = -EIO;
     assert(inkboy_renderer_present_frame(renderer, &frame) < 0);
-    assert(inkboy_profile.refresh_failures == 1U && inkboy_profile.presentations == 0U);
+    assert(inkboy_profile_counter_value(INKBOY_PROFILE_REFRESH_FAILURES) == 1U && inkboy_profile_counter_value(INKBOY_PROFILE_PRESENTATIONS) == 0U);
     wait_error = 0;
     close_renderer(renderer, 0, "RWFC");
 
@@ -257,7 +257,7 @@ int main(void)
     assert(inkboy_renderer_present_frame(renderer, &frame) == INKBOY_PRESENT_INITIAL);
     assert(full_refreshes == 1U && renderer->refresh_config.is_flashing);
     assert(inkboy_renderer_present_frame(renderer, &frame) == INKBOY_PRESENT_UNCHANGED);
-    assert(draws == 1U && inkboy_profile.presentations == 1U);
+    assert(draws == 1U && inkboy_profile_counter_value(INKBOY_PROFILE_PRESENTATIONS) == 1U);
     /* A changed color maps to the same grayscale: compare presented YA bytes. */
     pixels[0] = 0x000001U;
     assert(inkboy_renderer_present_frame(renderer, &frame) == INKBOY_PRESENT_UNCHANGED);
@@ -270,14 +270,14 @@ int main(void)
                              1236U, 1648U, &rect) == 0);
     assert(inkboy_renderer_present_frame(renderer, &frame) == INKBOY_PRESENT_PARTIAL);
     assert(!renderer->refresh_config.is_flashing && region_refreshes == 1U);
-    assert(inkboy_profile.stages[INKBOY_PROFILE_COMPOSE].count == 1U);
-    assert(inkboy_profile.normal_presentations == 1U);
+    assert(inkboy_profile_stage_value(INKBOY_PROFILE_COMPOSE).count == 1U);
+    assert(inkboy_profile_counter_value(INKBOY_PROFILE_NORMAL_PRESENTATIONS) == 1U);
     fake_now += policy.cleanup_ns - 1U;
     assert(inkboy_renderer_present_frame(renderer, &frame) == INKBOY_PRESENT_UNCHANGED);
     fake_now++;
     assert(inkboy_renderer_present_frame(renderer, &frame) == INKBOY_PRESENT_CLEANUP);
     assert(renderer->refresh_config.is_flashing && full_refreshes == 1U);
-    assert(inkboy_profile.cleanups == 1U && inkboy_profile.presentations == 3U);
+    assert(inkboy_profile_counter_value(INKBOY_PROFILE_CLEANUPS) == 1U && inkboy_profile_counter_value(INKBOY_PROFILE_PRESENTATIONS) == 3U);
     assert(inkboy_renderer_present_frame(renderer, &frame) == INKBOY_PRESENT_UNCHANGED);
     struct inkboy_video_frame portrait = {pixels, 144U, 160U, 576U};
     assert(inkboy_renderer_present_frame(renderer, &portrait) == INKBOY_PRESENT_INITIAL);
@@ -308,11 +308,11 @@ int main(void)
             assert(result == (failure == 4U ?
                 (cleanup ? INKBOY_PRESENT_CLEANUP : INKBOY_PRESENT_PARTIAL) : INKBOY_PRESENT_ERROR));
             if (failure == 1U || failure == 2U) {
-                assert(inkboy_profile.refresh_failures == 1U);
-                assert(inkboy_profile.cleanup_refresh_failures == cleanup);
-                assert(inkboy_profile.normal_refresh_failures == !cleanup);
+                assert(inkboy_profile_counter_value(INKBOY_PROFILE_REFRESH_FAILURES) == 1U);
+                assert(inkboy_profile_counter_value(INKBOY_PROFILE_CLEANUP_REFRESH_FAILURES) == cleanup);
+                assert(inkboy_profile_counter_value(INKBOY_PROFILE_NORMAL_REFRESH_FAILURES) == !cleanup);
             }
-            assert(inkboy_profile.presentations == (failure == 4U ? 2U : 1U));
+            assert(inkboy_profile_counter_value(INKBOY_PROFILE_PRESENTATIONS) == (failure == 4U ? 2U : 1U));
             wait_error = 0;
             close_renderer(renderer, 0, "RWFC");
         }

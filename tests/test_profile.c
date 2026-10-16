@@ -12,22 +12,22 @@ int main(void)
     FILE *capture = tmpfile();
     int saved_stdout = dup(STDOUT_FILENO);
     char line[8192];
-    uint64_t start;
+    struct inkboy_profile_timer first, second;
 
     assert(capture != NULL && saved_stdout >= 0);
     fflush(stdout);
     assert(dup2(fileno(capture), STDOUT_FILENO) >= 0);
     inkboy_profile_begin("test");
     inkboy_profile_report("summary", "empty", 0);
-    start = inkboy_profile_now();
-    inkboy_profile_record(INKBOY_PROFILE_INPUT, start);
-    inkboy_profile_record(INKBOY_PROFILE_INPUT, start);
-    inkboy_profile_record(INKBOY_PROFILE_INPUT, 0U);
-    assert(inkboy_profile.stages[INKBOY_PROFILE_INPUT].count == 2U);
-    assert(inkboy_profile.stages[INKBOY_PROFILE_INPUT].total_ns >=
-           inkboy_profile.stages[INKBOY_PROFILE_INPUT].max_ns);
-    assert(inkboy_profile.stages[INKBOY_PROFILE_INPUT].last_ns <=
-           inkboy_profile.stages[INKBOY_PROFILE_INPUT].max_ns);
+    first = inkboy_profile_timer_start(INKBOY_PROFILE_INPUT);
+    second = inkboy_profile_timer_start(INKBOY_PROFILE_INPUT);
+    inkboy_profile_timer_stop(first);
+    inkboy_profile_timer_stop(second);
+    assert(inkboy_profile_stage_value(INKBOY_PROFILE_INPUT).count == 2U);
+    assert(inkboy_profile_stage_value(INKBOY_PROFILE_INPUT).total_ns >=
+           inkboy_profile_stage_value(INKBOY_PROFILE_INPUT).max_ns);
+    assert(inkboy_profile_stage_value(INKBOY_PROFILE_INPUT).last_ns <=
+           inkboy_profile_stage_value(INKBOY_PROFILE_INPUT).max_ns);
     inkboy_profile_report("summary", "measured", 0);
     rewind(capture);
     assert(fgets(line, sizeof(line), capture) != NULL);

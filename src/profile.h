@@ -23,6 +23,8 @@ enum inkboy_profile_stage {
     INKBOY_PROFILE_CLEAN_SUBMIT,
     INKBOY_PROFILE_CLEAN_WAIT,
     INKBOY_PROFILE_INPUT_GAP_CLEAN,
+    INKBOY_PROFILE_RESTORE,
+    INKBOY_PROFILE_RESTORE_WAIT,
     INKBOY_PROFILE_STAGE_COUNT
 };
 
@@ -33,30 +35,56 @@ struct inkboy_profile_sample {
     uint64_t count;
 };
 
-struct inkboy_profile {
-    struct inkboy_profile_sample stages[INKBOY_PROFILE_STAGE_COUNT];
-    uint64_t runs;
-    uint64_t callbacks;
-    uint64_t valid_frames;
-    uint64_t duplicate_frames;
-    uint64_t invalid_frames;
-    uint64_t superseded_frames;
-    uint64_t presentations;
-    uint64_t initial_presentations;
-    uint64_t normal_presentations;
-    uint64_t cleanups;
-    uint64_t unchanged_images;
-    uint64_t refresh_attempts;
-    uint64_t refresh_failures;
-    uint64_t initial_refresh_failures;
-    uint64_t normal_refresh_failures;
-    uint64_t cleanup_refresh_failures;
+enum inkboy_profile_counter {
+    INKBOY_PROFILE_RUNS,
+    INKBOY_PROFILE_CALLBACKS,
+    INKBOY_PROFILE_VALID_FRAMES,
+    INKBOY_PROFILE_DUPLICATE_FRAMES,
+    INKBOY_PROFILE_INVALID_FRAMES,
+    INKBOY_PROFILE_SUPERSEDED_FRAMES,
+    INKBOY_PROFILE_PRESENTATIONS,
+    INKBOY_PROFILE_INITIAL_PRESENTATIONS,
+    INKBOY_PROFILE_NORMAL_PRESENTATIONS,
+    INKBOY_PROFILE_CLEANUPS,
+    INKBOY_PROFILE_UNCHANGED_IMAGES,
+    INKBOY_PROFILE_REFRESH_ATTEMPTS,
+    INKBOY_PROFILE_REFRESH_FAILURES,
+    INKBOY_PROFILE_INITIAL_REFRESH_FAILURES,
+    INKBOY_PROFILE_NORMAL_REFRESH_FAILURES,
+    INKBOY_PROFILE_CLEANUP_REFRESH_FAILURES,
+    INKBOY_PROFILE_COUNTER_COUNT
 };
 
-extern struct inkboy_profile inkboy_profile;
+struct inkboy_profile_timer {
+    uint64_t id;
+};
+
+enum inkboy_profile_frame_result { INKBOY_PROFILE_FRAME_VALID, INKBOY_PROFILE_FRAME_DUPLICATE,
+                                   INKBOY_PROFILE_FRAME_INVALID, INKBOY_PROFILE_FRAME_SUPERSEDED };
+enum inkboy_profile_presentation { INKBOY_PROFILE_PRESENT_INITIAL,
+                                   INKBOY_PROFILE_PRESENT_NORMAL,
+                                   INKBOY_PROFILE_PRESENT_CLEANUP };
 
 uint64_t inkboy_profile_now(void);
-void inkboy_profile_record(enum inkboy_profile_stage stage, uint64_t start);
+struct inkboy_profile_timer inkboy_profile_timer_start(enum inkboy_profile_stage stage);
+void inkboy_profile_timer_stop(struct inkboy_profile_timer timer);
+void inkboy_profile_timer_cancel(struct inkboy_profile_timer timer);
+void inkboy_profile_timer_stop_as(struct inkboy_profile_timer timer,
+                                  enum inkboy_profile_stage stage);
+uint64_t inkboy_profile_timer_elapsed_ns(struct inkboy_profile_timer timer);
+void inkboy_profile_frame_received(enum inkboy_profile_frame_result result);
+void inkboy_profile_frame_superseded(void);
+void inkboy_profile_emulation_ran(void);
+void inkboy_profile_refresh_attempted(void);
+void inkboy_profile_refresh_failed(enum inkboy_profile_presentation kind);
+void inkboy_profile_frame_presented(enum inkboy_profile_presentation kind);
+void inkboy_profile_image_unchanged(void);
+void inkboy_profile_startup(void);
+void inkboy_profile_warmup(void);
+void inkboy_profile_begin_gameplay(void);
+void inkboy_profile_finish(const char *reason, int status);
+uint64_t inkboy_profile_counter_value(enum inkboy_profile_counter counter);
+struct inkboy_profile_sample inkboy_profile_stage_value(enum inkboy_profile_stage stage);
 void inkboy_profile_begin(const char *phase);
 void inkboy_profile_report(const char *event, const char *reason, int status);
 

@@ -8,12 +8,99 @@
 #include <sys/resource.h>
 #include <time.h>
 
-struct inkboy_profile inkboy_profile;
+struct inkboy_profile {
+    struct inkboy_profile_sample stages[INKBOY_PROFILE_STAGE_COUNT];
+    uint64_t runs, callbacks, valid_frames, duplicate_frames, invalid_frames;
+    uint64_t superseded_frames, presentations, initial_presentations, normal_presentations;
+    uint64_t cleanups, unchanged_images, refresh_attempts, refresh_failures;
+    uint64_t initial_refresh_failures, normal_refresh_failures, cleanup_refresh_failures;
+};
+
+static struct inkboy_profile inkboy_profile;
+
+struct active_timer {
+    uint64_t id;
+    uint64_t started_ns;
+    enum inkboy_profile_stage stage;
+};
+
+static struct active_timer active_timers[32];
+static uint64_t next_timer_id = 1U;
 
 static const char *phase_name = "startup";
 static uint64_t started;
 static uint64_t previous_report;
 static double initial_cpu;
+
+static uint64_t *counter_address(enum inkboy_profile_counter counter)
+{
+    uint64_t *counters[] = {
+        &inkboy_profile.runs, &inkboy_profile.callbacks,
+        &inkboy_profile.valid_frames, &inkboy_profile.duplicate_frames,
+        &inkboy_profile.invalid_frames, &inkboy_profile.superseded_frames,
+        &inkboy_profile.presentations, &inkboy_profile.initial_presentations,
+        &inkboy_profile.normal_presentations, &inkboy_profile.cleanups,
+        &inkboy_profile.unchanged_images, &inkboy_profile.refresh_attempts,
+        &inkboy_profile.refresh_failures, &inkboy_profile.initial_refresh_failures,
+        &inkboy_profile.normal_refresh_failures, &inkboy_profile.cleanup_refresh_failures
+    };
+    return (unsigned)counter < INKBOY_PROFILE_COUNTER_COUNT ? counters[counter] : NULL;
+}
+
+static void inkboy_profile_count(enum inkboy_profile_counter counter)
+{
+    uint64_t *value = counter_address(counter);
+    if (value != NULL) (*value)++;
+}
+
+void inkboy_profile_frame_received(enum inkboy_profile_frame_result result)
+{
+    inkboy_profile_count(INKBOY_PROFILE_CALLBACKS);
+    switch (result) {
+    case INKBOY_PROFILE_FRAME_VALID: inkboy_profile_count(INKBOY_PROFILE_VALID_FRAMES); break;
+    case INKBOY_PROFILE_FRAME_DUPLICATE: inkboy_profile_count(INKBOY_PROFILE_DUPLICATE_FRAMES); break;
+    case INKBOY_PROFILE_FRAME_INVALID: inkboy_profile_count(INKBOY_PROFILE_INVALID_FRAMES); break;
+    case INKBOY_PROFILE_FRAME_SUPERSEDED: inkboy_profile_count(INKBOY_PROFILE_SUPERSEDED_FRAMES); break;
+    }
+}
+
+void inkboy_profile_frame_superseded(void)
+{
+    inkboy_profile_count(INKBOY_PROFILE_SUPERSEDED_FRAMES);
+}
+
+void inkboy_profile_emulation_ran(void) { inkboy_profile_count(INKBOY_PROFILE_RUNS); }
+void inkboy_profile_refresh_attempted(void) { inkboy_profile_count(INKBOY_PROFILE_REFRESH_ATTEMPTS); }
+void inkboy_profile_image_unchanged(void) { inkboy_profile_count(INKBOY_PROFILE_UNCHANGED_IMAGES); }
+
+void inkboy_profile_refresh_failed(enum inkboy_profile_presentation kind)
+{
+    inkboy_profile_count(INKBOY_PROFILE_REFRESH_FAILURES);
+    inkboy_profile_count(kind == INKBOY_PROFILE_PRESENT_INITIAL ? INKBOY_PROFILE_INITIAL_REFRESH_FAILURES :
+                         kind == INKBOY_PROFILE_PRESENT_CLEANUP ? INKBOY_PROFILE_CLEANUP_REFRESH_FAILURES :
+                         INKBOY_PROFILE_NORMAL_REFRESH_FAILURES);
+}
+
+void inkboy_profile_frame_presented(enum inkboy_profile_presentation kind)
+{
+    inkboy_profile_count(INKBOY_PROFILE_PRESENTATIONS);
+    if (kind == INKBOY_PROFILE_PRESENT_INITIAL) inkboy_profile_count(INKBOY_PROFILE_INITIAL_PRESENTATIONS);
+    if (kind == INKBOY_PROFILE_PRESENT_NORMAL) inkboy_profile_count(INKBOY_PROFILE_NORMAL_PRESENTATIONS);
+    if (kind == INKBOY_PROFILE_PRESENT_CLEANUP) inkboy_profile_count(INKBOY_PROFILE_CLEANUPS);
+    inkboy_profile_report(kind == INKBOY_PROFILE_PRESENT_CLEANUP ? "cleanup" : "presentation", "running", 0);
+}
+
+uint64_t inkboy_profile_counter_value(enum inkboy_profile_counter counter)
+{
+    uint64_t *value = counter_address(counter);
+    return value != NULL ? *value : 0U;
+}
+
+struct inkboy_profile_sample inkboy_profile_stage_value(enum inkboy_profile_stage stage)
+{
+    if ((unsigned)stage >= INKBOY_PROFILE_STAGE_COUNT) return (struct inkboy_profile_sample){0};
+    return inkboy_profile.stages[stage];
+}
 
 uint64_t inkboy_profile_now(void)
 {
@@ -25,7 +112,7 @@ uint64_t inkboy_profile_now(void)
     return (uint64_t)now.tv_sec * UINT64_C(1000000000) + (uint64_t)now.tv_nsec;
 }
 
-void inkboy_profile_record(enum inkboy_profile_stage stage, uint64_t start)
+static void inkboy_profile_record(enum inkboy_profile_stage stage, uint64_t start)
 {
     uint64_t end = inkboy_profile_now();
     struct inkboy_profile_sample *sample;
@@ -42,6 +129,64 @@ void inkboy_profile_record(enum inkboy_profile_stage stage, uint64_t start)
     if (duration > sample->max_ns) {
         sample->max_ns = duration;
     }
+}
+
+struct inkboy_profile_timer inkboy_profile_timer_start(enum inkboy_profile_stage stage)
+{
+    struct inkboy_profile_timer timer = {0U};
+    if ((unsigned)stage >= INKBOY_PROFILE_STAGE_COUNT) return timer;
+    for (size_t index = 0U; index < sizeof(active_timers) / sizeof(active_timers[0]); index++) {
+        if (active_timers[index].id == 0U) {
+            uint64_t id = next_timer_id++;
+            if (id == 0U) id = next_timer_id++;
+            active_timers[index] = (struct active_timer){id, inkboy_profile_now(), stage};
+            timer.id = id;
+            return timer;
+        }
+    }
+    return timer;
+}
+
+static struct active_timer *find_timer(struct inkboy_profile_timer timer)
+{
+    if (timer.id == 0U) return NULL;
+    for (size_t index = 0U; index < sizeof(active_timers) / sizeof(active_timers[0]); index++) {
+        if (active_timers[index].id == timer.id) return &active_timers[index];
+    }
+    return NULL;
+}
+
+static void stop_timer(struct inkboy_profile_timer timer, enum inkboy_profile_stage stage)
+{
+    struct active_timer *active = find_timer(timer);
+    if (active == NULL) return;
+    inkboy_profile_record(stage, active->started_ns);
+    active->id = 0U;
+}
+
+void inkboy_profile_timer_stop(struct inkboy_profile_timer timer)
+{
+    struct active_timer *active = find_timer(timer);
+    if (active != NULL) stop_timer(timer, active->stage);
+}
+
+void inkboy_profile_timer_cancel(struct inkboy_profile_timer timer)
+{
+    struct active_timer *active = find_timer(timer);
+    if (active != NULL) active->id = 0U;
+}
+
+void inkboy_profile_timer_stop_as(struct inkboy_profile_timer timer,
+                                  enum inkboy_profile_stage stage)
+{
+    stop_timer(timer, stage);
+}
+
+uint64_t inkboy_profile_timer_elapsed_ns(struct inkboy_profile_timer timer)
+{
+    struct active_timer *active = find_timer(timer);
+    uint64_t now = inkboy_profile_now();
+    return active != NULL && now >= active->started_ns ? now - active->started_ns : 0U;
 }
 
 static double cpu_seconds(const struct rusage *usage)
@@ -62,13 +207,27 @@ void inkboy_profile_begin(const char *phase)
     initial_cpu = cpu_seconds(&usage);
 }
 
+void inkboy_profile_startup(void) { inkboy_profile_begin("startup"); }
+void inkboy_profile_warmup(void) { inkboy_profile_begin("warmup"); }
+
+void inkboy_profile_begin_gameplay(void)
+{
+    inkboy_profile_report("summary", "warmup-complete", 0);
+    inkboy_profile_begin("gameplay");
+}
+
+void inkboy_profile_finish(const char *reason, int status)
+{
+    inkboy_profile_report("summary", reason, status);
+}
+
 void inkboy_profile_report(const char *event, const char *reason, int status)
 {
     static const char *const names[] = {
         "emulation", "input_poll", "input_gap", "callback_copy", "convert", "scale",
         "compose", "region_pack", "fbink_draw", "refresh_submit", "refresh_wait",
         "input_to_state", "initial_submit", "initial_wait", "clean_submit",
-        "clean_wait", "input_gap_clean"
+        "clean_wait", "input_gap_clean", "restore", "restore_wait"
     };
     struct rusage usage = {0};
     struct timespec utc = {0};
