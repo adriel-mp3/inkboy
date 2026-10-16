@@ -446,9 +446,8 @@ inkboy_input_open(struct inkboy_input **input_out,
     return 0;
 }
 
-int
-inkboy_input_wait(struct inkboy_input *input,
-                  const volatile sig_atomic_t *stop_requested)
+static int
+poll_input(struct inkboy_input *input, int timeout_ms)
 {
     struct pollfd descriptor;
 
@@ -459,19 +458,19 @@ inkboy_input_wait(struct inkboy_input *input,
     descriptor.events = POLLIN;
     descriptor.revents = 0;
 
-    while (stop_requested == NULL || !*stop_requested) {
-        int poll_result = poll(&descriptor, 1U, POLL_TIMEOUT_MS);
+    {
+        int poll_result = poll(&descriptor, 1U, timeout_ms);
 
         if (poll_result < 0) {
             if (errno == EINTR) {
-                continue;
+                return 0;
             }
             fprintf(stderr, "inkboy: touchscreen poll failed: %s\n", strerror(errno));
             cancel_primary_control(input);
             return -1;
         }
         if (poll_result == 0) {
-            continue;
+            return 0;
         }
         if ((descriptor.revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
             fprintf(stderr, "inkboy: touchscreen poll error: 0x%x\n",
@@ -511,8 +510,31 @@ inkboy_input_wait(struct inkboy_input *input,
             }
         }
     }
+    return 0;
+}
+
+int
+inkboy_input_wait(struct inkboy_input *input,
+                  const volatile sig_atomic_t *stop_requested)
+{
+    if (input == NULL || input->fd < 0) {
+        return -1;
+    }
+    while (stop_requested == NULL || !*stop_requested) {
+        int result = poll_input(input, POLL_TIMEOUT_MS);
+
+        if (result != 0) {
+            return result;
+        }
+    }
     cancel_primary_control(input);
     return 0;
+}
+
+int
+inkboy_input_poll(struct inkboy_input *input)
+{
+    return poll_input(input, 0);
 }
 
 void

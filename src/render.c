@@ -26,6 +26,8 @@ struct inkboy_renderer {
     FBInkDump dump;
     FBInkState state;
     struct inkboy_layout layout;
+    uint8_t *screen_buffer;
+    size_t screen_buffer_size;
 };
 
 static const uint8_t title_glyphs[6U][TITLE_GLYPH_HEIGHT] = {
@@ -280,8 +282,61 @@ draw_controls(uint8_t *buffer, const struct inkboy_layout *layout)
     draw_centered_label(buffer, layout->width, &layout->start, "START", 3U);
 }
 
+static void
+draw_game_frame(uint8_t *buffer, const struct inkboy_layout *layout,
+                const struct inkboy_video_frame *frame)
+{
+    uint32_t output_width = layout->duck_size;
+    uint32_t output_height = layout->duck_size;
+    uint32_t scaled_width = output_width;
+    uint32_t scaled_height = output_height;
+    uint32_t origin_x;
+    uint32_t origin_y;
+
+    if (frame == NULL || frame->pixels == NULL || frame->width == 0U ||
+        frame->height == 0U || frame->pitch < (size_t)frame->width * 4U) {
+        return;
+    }
+    if ((uint64_t)scaled_width * frame->height <=
+        (uint64_t)scaled_height * frame->width) {
+        scaled_height = (uint32_t)(((uint64_t)scaled_width * frame->height) /
+                                   frame->width);
+    } else {
+        scaled_width = (uint32_t)(((uint64_t)scaled_height * frame->width) /
+                                  frame->height);
+    }
+    origin_x = layout->duck_x + (output_width - scaled_width) / 2U;
+    origin_y = layout->duck_y + (output_height - scaled_height) / 2U;
+    for (uint32_t y = 0U; y < scaled_height; y++) {
+        unsigned source_y = (unsigned)(((uint64_t)y * frame->height) /
+                                       scaled_height);
+        const unsigned char *source_row =
+            (const unsigned char *)frame->pixels + (size_t)source_y * frame->pitch;
+        for (uint32_t x = 0U; x < scaled_width; x++) {
+            unsigned source_x = (unsigned)(((uint64_t)x * frame->width) /
+                                           scaled_width);
+            uint32_t pixel;
+            uint8_t red;
+            uint8_t green;
+            uint8_t blue;
+            uint8_t gray;
+
+            memcpy(&pixel, source_row + (size_t)source_x * 4U, sizeof(pixel));
+            red = (uint8_t)(pixel >> 16U);
+            green = (uint8_t)(pixel >> 8U);
+            blue = (uint8_t)pixel;
+            gray = (uint8_t)((77U * red + 150U * green + 29U * blue + 128U) >> 8U);
+            set_pixel(buffer, layout->width, origin_x + x, origin_y + y, gray);
+        }
+    }
+}
+
 static int
-build_screen(const struct inkboy_layout *layout, uint8_t **buffer_out)
+build_screen(const struct inkboy_layout *layout,
+             const struct inkboy_video_frame *frame,
+             uint8_t **buffer_out,
+             uint8_t **storage,
+             size_t *storage_size)
 {
     size_t buffer_size;
     uint8_t *buffer;
@@ -292,7 +347,17 @@ build_screen(const struct inkboy_layout *layout, uint8_t **buffer_out)
         return -1;
     }
 
-    buffer = malloc(buffer_size);
+    if (*storage == NULL || *storage_size < buffer_size) {
+        buffer = realloc(*storage, buffer_size);
+        if (buffer == NULL) {
+            fprintf(stderr, "inkboy: unable to allocate %zu-byte screen buffer: %s\n",
+                    buffer_size, strerror(errno));
+            return -1;
+        }
+        *storage = buffer;
+        *storage_size = buffer_size;
+    }
+    buffer = *storage;
     if (buffer == NULL) {
         fprintf(stderr, "inkboy: unable to allocate %zu-byte screen buffer: %s\n",
                 buffer_size, strerror(errno));
@@ -305,8 +370,12 @@ build_screen(const struct inkboy_layout *layout, uint8_t **buffer_out)
     }
 
     draw_title(buffer, layout->width, layout->title_x, layout->title_y);
-    draw_duck(buffer, layout->width, layout->duck_x, layout->duck_y,
-              layout->duck_size);
+    if (frame == NULL) {
+        draw_duck(buffer, layout->width, layout->duck_x, layout->duck_y,
+                  layout->duck_size);
+    } else {
+        draw_game_frame(buffer, layout, frame);
+    }
     draw_controls(buffer, layout);
     draw_centered_label(buffer, layout->width, &layout->exit, "EXIT", CONTROL_SCALE);
     *buffer_out = buffer;
@@ -379,14 +448,14 @@ inkboy_renderer_present(struct inkboy_renderer *renderer)
         inkboy_buffer_size(renderer->state.view_width,
                            renderer->state.view_height,
                            &buffer_size) != 0 ||
-        build_screen(&renderer->layout, &buffer) != 0) {
+        build_screen(&renderer->layout, NULL, &buffer,
+                     &renderer->screen_buffer, &renderer->screen_buffer_size) != 0) {
         return -1;
     }
 
     result = fbink_dump(renderer->fbfd, &renderer->dump);
     if (result != 0) {
         fprintf(stderr, "inkboy: unable to save the previous screen: %d\n", result);
-        free(buffer);
         return -1;
     }
     renderer->dump_saved = true;
@@ -400,7 +469,6 @@ inkboy_renderer_present(struct inkboy_renderer *renderer)
                                   0,
                                   0,
                                   &renderer->config);
-    free(buffer);
     if (result != 0) {
         fprintf(stderr, "inkboy: unable to draw the composition: %d\n", result);
         return -1;
@@ -411,6 +479,50 @@ inkboy_renderer_present(struct inkboy_renderer *renderer)
                            &renderer->refresh_config);
     if (result != 0) {
         fprintf(stderr, "inkboy: unable to refresh the composition: %d\n", result);
+        return -1;
+    }
+    (void)fbink_wait_for_complete(renderer->fbfd, LAST_MARKER);
+    return 0;
+}
+
+int
+inkboy_renderer_present_frame(struct inkboy_renderer *renderer,
+                              const struct inkboy_video_frame *frame)
+{
+    uint8_t *buffer = NULL;
+    size_t buffer_size;
+    int result;
+
+    if (renderer == NULL || frame == NULL ||
+        inkboy_buffer_size(renderer->state.view_width,
+                           renderer->state.view_height,
+                           &buffer_size) != 0 ||
+        build_screen(&renderer->layout, frame, &buffer,
+                     &renderer->screen_buffer, &renderer->screen_buffer_size) != 0) {
+        return -1;
+    }
+    if (!renderer->dump_saved) {
+        result = fbink_dump(renderer->fbfd, &renderer->dump);
+        if (result != 0) {
+            fprintf(stderr, "inkboy: unable to save the previous screen: %d\n", result);
+            return -1;
+        }
+        renderer->dump_saved = true;
+    }
+    renderer->config.no_refresh = true;
+    result = fbink_print_raw_data(renderer->fbfd, buffer,
+                                  (int)renderer->state.view_width,
+                                  (int)renderer->state.view_height,
+                                  buffer_size, 0, 0, &renderer->config);
+    if (result != 0) {
+        fprintf(stderr, "inkboy: unable to draw the game frame: %d\n", result);
+        return -1;
+    }
+    renderer->refresh_config.is_flashing = true;
+    result = fbink_refresh(renderer->fbfd, 0U, 0U, 0U, 0U,
+                           &renderer->refresh_config);
+    if (result != 0) {
+        fprintf(stderr, "inkboy: unable to refresh the game frame: %d\n", result);
         return -1;
     }
     (void)fbink_wait_for_complete(renderer->fbfd, LAST_MARKER);
@@ -448,6 +560,7 @@ inkboy_renderer_close(struct inkboy_renderer *renderer)
         }
     }
     free_dump(renderer);
+    free(renderer->screen_buffer);
     if (renderer->fbink_opened && fbink_close(renderer->fbfd) != 0) {
         fprintf(stderr, "inkboy: warning: unable to close framebuffer\n");
         if (result == 0) {
