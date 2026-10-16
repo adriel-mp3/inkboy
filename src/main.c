@@ -1,4 +1,7 @@
+#define _POSIX_C_SOURCE 200809L
+
 #include "input.h"
+#include "libretro.h"
 #include "render.h"
 
 #include <errno.h>
@@ -6,109 +9,178 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
+
+#define INKBOY_CORE_PATH "/mnt/us/inkboy/task008-gameplay/sameboy_libretro.so"
+#define INKBOY_ROM_PATH \
+    "/mnt/us/games/Pokemon - Yellow Version - Special Pikachu Edition (USA, Europe) (GBC,SGB Enhanced).gb"
+#define WARMUP_FRAMES 180U
+#define DISPLAY_FPS 1.0
 
 static volatile sig_atomic_t stop_requested;
 
-static void
-request_stop(int signal_number)
+static void request_stop(int signal_number)
 {
     (void)signal_number;
     stop_requested = 1;
 }
 
-static int
-install_signal_handlers(void)
+static int install_signal_handlers(void)
 {
     struct sigaction action;
 
     memset(&action, 0, sizeof(action));
     action.sa_handler = request_stop;
-    if (sigemptyset(&action.sa_mask) != 0) {
-        return -1;
-    }
-
-    if (sigaction(SIGINT, &action, NULL) != 0 ||
+    if (sigemptyset(&action.sa_mask) != 0 ||
+        sigaction(SIGINT, &action, NULL) != 0 ||
         sigaction(SIGTERM, &action, NULL) != 0 ||
         sigaction(SIGHUP, &action, NULL) != 0) {
         return -1;
     }
-
     return 0;
 }
 
-static void
-handle_input_event(const struct inkboy_input_event *event, void *userdata)
+static struct timespec add_seconds(struct timespec value, double seconds)
 {
-    const char *name;
+    time_t whole_seconds = (time_t)seconds;
+    long nanoseconds = (long)((seconds - (double)whole_seconds) * 1000000000.0);
 
-    (void)userdata;
+    value.tv_sec += whole_seconds;
+    value.tv_nsec += nanoseconds;
+    if (value.tv_nsec >= 1000000000L) {
+        value.tv_sec++;
+        value.tv_nsec -= 1000000000L;
+    }
+    return value;
+}
+
+static bool before(struct timespec left, struct timespec right)
+{
+    return left.tv_sec < right.tv_sec ||
+           (left.tv_sec == right.tv_sec && left.tv_nsec < right.tv_nsec);
+}
+
+static void handle_input_event(const struct inkboy_input_event *event,
+                               void *userdata)
+{
+    struct inkboy_libretro *emulator = userdata;
+
     if (event == NULL) {
         return;
     }
-    name = inkboy_control_name(event->control);
-    if (name == NULL) {
+    if (event->control == INKBOY_CONTROL_EXIT) {
+        if (event->phase == INKBOY_INPUT_UP) {
+            stop_requested = 1;
+        }
         return;
     }
-    switch (event->phase) {
-    case INKBOY_INPUT_DOWN:
-        printf("CONTROL_DOWN button=%s x=%u y=%u\n",
-               name, event->x, event->y);
-        break;
-    case INKBOY_INPUT_UP:
-        printf("CONTROL_UP button=%s x=%u y=%u\n",
-               name, event->x, event->y);
-        break;
-    case INKBOY_INPUT_CANCEL:
-        printf("CONTROL_CANCEL button=%s\n", name);
-        break;
-    }
-    fflush(stdout);
+    inkboy_libretro_set_control(emulator, event->control,
+                                event->phase == INKBOY_INPUT_DOWN);
 }
 
-int
-main(void)
+static int poll_input(struct inkboy_input *input)
+{
+    int result = inkboy_input_poll(input);
+
+    if (result < 0) {
+        stop_requested = 1;
+    }
+    return result;
+}
+
+static void sleep_until(struct timespec deadline)
+{
+    struct timespec now;
+    struct timespec remaining;
+
+    if (clock_gettime(CLOCK_MONOTONIC, &now) != 0 || !before(now, deadline)) {
+        return;
+    }
+    remaining.tv_sec = deadline.tv_sec - now.tv_sec;
+    remaining.tv_nsec = deadline.tv_nsec - now.tv_nsec;
+    if (remaining.tv_nsec < 0) {
+        remaining.tv_sec--;
+        remaining.tv_nsec += 1000000000L;
+    }
+    while (nanosleep(&remaining, &remaining) != 0 && errno == EINTR) {
+    }
+}
+
+int main(void)
 {
     struct inkboy_renderer *renderer = NULL;
+    struct inkboy_libretro *emulator = NULL;
     struct inkboy_input *input = NULL;
-    int input_result;
-    int render_result;
-    int exit_code = EXIT_FAILURE;
+    struct inkboy_video_frame frame;
+    struct timespec next_run;
+    struct timespec next_display;
+    double emulation_fps;
+    bool runtime_failed = false;
+    int result = EXIT_FAILURE;
 
     if (install_signal_handlers() != 0) {
         fprintf(stderr, "inkboy: unable to install signal handlers: %s\n",
                 strerror(errno));
         return EXIT_FAILURE;
     }
-
-    if (inkboy_renderer_open(&renderer) != 0) {
+    if (inkboy_renderer_open(&renderer) != 0 ||
+        inkboy_libretro_open(&emulator, INKBOY_CORE_PATH, INKBOY_ROM_PATH) != 0) {
+        inkboy_libretro_close(emulator);
+        inkboy_renderer_close(renderer);
         return EXIT_FAILURE;
     }
-    if (inkboy_input_open(&input,
-                          inkboy_renderer_layout(renderer),
-                          handle_input_event,
-                          NULL) != 0) {
-        (void)inkboy_renderer_close(renderer);
-        return EXIT_FAILURE;
-    }
-    if (inkboy_renderer_present(renderer) != 0) {
-        inkboy_input_close(input);
-        (void)inkboy_renderer_close(renderer);
+    if (inkboy_input_open(&input, inkboy_renderer_layout(renderer),
+                          handle_input_event, emulator) != 0) {
+        inkboy_libretro_close(emulator);
+        inkboy_renderer_close(renderer);
         return EXIT_FAILURE;
     }
 
-    {
-        const struct inkboy_layout *layout = inkboy_renderer_layout(renderer);
-        printf("InkBoy rendered with FBInk %s on %ux%u; waiting for EXIT or termination\n",
-               inkboy_renderer_version(renderer), layout->width, layout->height);
+    for (unsigned frame_index = 0U;
+         frame_index < WARMUP_FRAMES && !stop_requested; frame_index++) {
+        if (poll_input(input) < 0 || inkboy_libretro_run(emulator) != 0) {
+            runtime_failed = true;
+            stop_requested = 1;
+        }
     }
-    fflush(stdout);
+    if (!stop_requested && inkboy_libretro_frame(emulator, &frame) &&
+        inkboy_renderer_present_frame(renderer, &frame) == 0 &&
+        clock_gettime(CLOCK_MONOTONIC, &next_run) == 0) {
+        emulation_fps = inkboy_libretro_fps(emulator);
+        next_display = add_seconds(next_run, 1.0 / DISPLAY_FPS);
+        while (!stop_requested) {
+            struct timespec now;
 
-    input_result = inkboy_input_wait(input, &stop_requested);
+            if (poll_input(input) < 0 || inkboy_libretro_run(emulator) != 0) {
+                runtime_failed = true;
+                break;
+            }
+            next_run = add_seconds(next_run, 1.0 / emulation_fps);
+            if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) {
+                runtime_failed = true;
+                break;
+            }
+            if (before(next_run, now)) {
+                next_run = now;
+            } else {
+                sleep_until(next_run);
+            }
+            if (!before(now, next_display) &&
+                inkboy_libretro_frame(emulator, &frame)) {
+                if (inkboy_renderer_present_frame(renderer, &frame) != 0) {
+                    runtime_failed = true;
+                    break;
+                }
+                next_display = add_seconds(now, 1.0 / DISPLAY_FPS);
+            }
+        }
+        result = runtime_failed ? EXIT_FAILURE : EXIT_SUCCESS;
+    }
+
     inkboy_input_close(input);
-    render_result = inkboy_renderer_close(renderer);
-
-    if (input_result >= 0 && render_result == 0) {
-        exit_code = EXIT_SUCCESS;
+    inkboy_libretro_close(emulator);
+    if (inkboy_renderer_close(renderer) != 0) {
+        result = EXIT_FAILURE;
     }
-    return exit_code;
+    return result;
 }

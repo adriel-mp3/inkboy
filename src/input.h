@@ -31,6 +31,7 @@ int inkboy_input_open(struct inkboy_input **input_out,
                       void *userdata);
 int inkboy_input_wait(struct inkboy_input *input,
                       const volatile sig_atomic_t *stop_requested);
+int inkboy_input_poll(struct inkboy_input *input);
 void inkboy_input_close(struct inkboy_input *input);
 
 #endif

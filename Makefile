@@ -13,10 +13,14 @@ KINDLE_SYSROOT ?= $(KINDLE_TC)/arm-kindlehf-linux-gnueabihf/sysroot
 KINDLE_CC   ?= $(KINDLE_TC)/bin/arm-kindlehf-linux-gnueabihf-gcc
 
 COMMON_CFLAGS := -std=c11 -Wall -Wextra -Wpedantic -O2
-APP_SOURCES   := src/main.c src/layout.c src/render.c src/input.c
+APP_SOURCES   := src/main.c src/layout.c src/render.c src/input.c src/libretro.c
 APP_OBJECTS   := $(addprefix build/obj/$(TARGET)/,$(APP_SOURCES:src/%.c=%.o))
 TEST_SOURCE   := tests/test_layout.c
 TEST_OUTPUT   := build/test-layout
+LIBRETRO_TEST_SOURCE := tests/test_libretro.c
+LIBRETRO_TEST_OUTPUT := build/test-libretro
+LIBRETRO_RUNTIME_TEST_SOURCE := tests/test_libretro_runtime.c
+LIBRETRO_RUNTIME_TEST_OUTPUT := build/test-libretro-runtime
 LIBRETRO_PROBE_SOURCE := tools/libretro_probe.c
 SAMEBOY_DIR   := third_party/sameboy
 SAMEBOY_CORE_HOST := build/sameboy/sameboy_libretro.so
@@ -52,7 +56,7 @@ FBINK_CPPFLAGS := -I$(FBINK_DIR) -D_REENTRANT=1 -D_GNU_SOURCE \
 	-DFBINK_MINIMAL -DFBINK_WITH_IMAGE -DFBINK_WITH_DRAW \
 	-DFBINK_VERSION=\"$(FBINK_VERSION)\"
 
-.PHONY: all docker-image bootstrap docker-build docker-build-libretro-frame docker-build-libretro-live host host-libretro-frame host-libretro-live touch-probe asset test sameboy-core-host sameboy-core-kindle libretro-probe-host libretro-probe-kindle deploy-libretro-probe libretro-frame-host libretro-frame-kindle deploy-libretro-frame libretro-live-host libretro-live-kindle deploy-libretro-live libretro-scale-test clean inspect
+.PHONY: all docker-image bootstrap docker-build docker-build-task008 docker-build-libretro-frame docker-build-libretro-live host host-libretro-frame host-libretro-live touch-probe asset test sameboy-core-host sameboy-core-kindle libretro-probe-host libretro-probe-kindle deploy-libretro-probe libretro-frame-host libretro-frame-kindle deploy-libretro-frame libretro-live-host libretro-live-kindle deploy-libretro-live libretro-scale-test libretro-runtime-test deploy-task008 clean inspect
 
 # The default is deliberately the isolated Kindle build. It will stop with a
 # useful message until a Kindle SDK/sysroot has been bootstrapped.
@@ -79,6 +83,15 @@ docker-build: docker-image
 		$(IMAGE) make TARGET=kindle KINDLE_TC=$(KINDLE_TC) \
 		KINDLE_SYSROOT=$(KINDLE_SYSROOT) KINDLE_CC=$(KINDLE_CC) \
 		build/$(PROJECT) build/touch_probe build/libretro_probe
+
+docker-build-task008: docker-image
+	@test -x "$(TOOLCHAIN)/arm-kindlehf-linux-gnueabihf/bin/arm-kindlehf-linux-gnueabihf-gcc" || \
+		(echo "Kindle toolchain not found. Run 'make bootstrap' first." >&2; exit 2)
+	$(DOCKER_ENV) $(DOCKER) run --rm --user "$$(id -u):$$(id -g)" \
+		--volume "$(ROOT_DIR):/workspace" --volume "$(TOOLCHAIN):/opt/x-tools:ro" \
+		--workdir /workspace $(IMAGE) make TARGET=kindle KINDLE_TC=$(KINDLE_TC) \
+		KINDLE_SYSROOT=$(KINDLE_SYSROOT) KINDLE_CC=$(KINDLE_CC) \
+		build/$(PROJECT) sameboy-core-kindle
 
 # A host build is only a source/UI smoke test. It does not establish Kindle
 # ABI or runtime compatibility.
@@ -196,12 +209,31 @@ deploy-libretro-live: libretro-live-kindle
 
 asset: $(ASSET_HEADER)
 
-test: $(TEST_OUTPUT)
+test: $(TEST_OUTPUT) $(LIBRETRO_TEST_OUTPUT)
 	@$(TEST_OUTPUT)
+	@$(LIBRETRO_TEST_OUTPUT)
 
 $(TEST_OUTPUT): $(TEST_SOURCE) src/layout.c src/layout.h
 	@mkdir -p $(BUILD_DIR)
 	$(HOST_CC) $(COMMON_CFLAGS) -Isrc $(TEST_SOURCE) src/layout.c -o $@
+
+$(LIBRETRO_TEST_OUTPUT): $(LIBRETRO_TEST_SOURCE) src/libretro.c src/libretro.h src/frame.h src/layout.h
+	@mkdir -p $(BUILD_DIR)
+	$(HOST_CC) $(COMMON_CFLAGS) -Isrc -I$(SAMEBOY_DIR)/libretro \
+		$(LIBRETRO_TEST_SOURCE) src/libretro.c -ldl -o $@
+
+libretro-runtime-test: $(LIBRETRO_RUNTIME_TEST_OUTPUT) $(SAMEBOY_CORE_HOST)
+	@$(LIBRETRO_RUNTIME_TEST_OUTPUT) $(SAMEBOY_CORE_HOST) \
+		$(SAMEBOY_DIR)/.github/actions/dmg-acid2.gb
+
+deploy-task008: docker-build-task008
+	@mkdir -p build/task008-deploy
+	cp build/$(PROJECT) $(SAMEBOY_CORE_KINDLE) build/task008-deploy/
+
+$(LIBRETRO_RUNTIME_TEST_OUTPUT): $(LIBRETRO_RUNTIME_TEST_SOURCE) src/libretro.c src/libretro.h src/frame.h src/layout.h
+	@mkdir -p $(BUILD_DIR)
+	$(HOST_CC) $(COMMON_CFLAGS) -Isrc -I$(SAMEBOY_DIR)/libretro \
+		$(LIBRETRO_RUNTIME_TEST_SOURCE) src/libretro.c -ldl -o $@
 
 $(ASSET_TOOL): tools/svg_to_bitmap.c
 	@mkdir -p $(dir $@)
@@ -241,7 +273,7 @@ build/libfbink-$(TARGET).a: $(FBINK_OBJECTS)
 $(OUTPUT): $(APP_OBJECTS) $(ASSET_HEADER) build/libfbink-$(TARGET).a
 	@mkdir -p $(BUILD_DIR)
 	$(CC) $(COMMON_CFLAGS) -D_POSIX_C_SOURCE=200809L -Isrc -I$(FBINK_DIR) $(APP_OBJECTS) \
-		build/libfbink-$(TARGET).a -lm -o $@
+		build/libfbink-$(TARGET).a -ldl -lm -o $@
 
 $(TOUCH_PROBE_OUTPUT): $(TOUCH_PROBE_SOURCE)
 	@mkdir -p $(BUILD_DIR)
