@@ -50,7 +50,7 @@ TASK009_FULL_OBJECTS := $(addprefix build/obj/task009-full/,$(APP_SOURCES:src/%.
 TASK009_REGION_OBJECTS := $(addprefix build/obj/task009-region/,$(APP_SOURCES:src/%.c=%.o))
 TASK009_CPPFLAGS := -Isrc -I$(FBINK_DIR) -D_POSIX_C_SOURCE=200809L \
 	-DINKBOY_CORE_PATH='"/mnt/us/inkboy/task009-runtime/sameboy_libretro.so"'
-TASK009_TESTS := build/test-input build/test-runtime build/test-frame build/test-render build/test-render-region build/test-profile build/test-touch-failure
+TASK009_TESTS := build/test-input build/test-runtime build/test-frame build/test-draw build/test-render build/test-render-region build/test-profile build/test-touch-failure
 AR            ?= ar
 RANLIB        ?= ranlib
 
@@ -261,6 +261,10 @@ build/test-runtime: tests/test_runtime.c src/main.c src/profile.c $(wildcard src
 build/test-frame: tests/test_frame.c src/frame.c src/frame.h src/layout.c src/layout.h
 	@mkdir -p $(BUILD_DIR)
 	$(HOST_CC) $(COMMON_CFLAGS) -Isrc $< src/frame.c src/layout.c -o $@
+
+build/test-draw: tests/test_draw.c src/draw.c src/layout.c src/draw.h src/layout.h $(ASSET_HEADER)
+	@mkdir -p $(BUILD_DIR)
+	$(HOST_CC) $(COMMON_CFLAGS) -Isrc $< src/draw.c src/layout.c -o $@
 
 build/test-render: tests/test_render.c src/render.c src/draw.c src/frame.c src/profile.c src/layout.c $(wildcard src/*.h)
 	@mkdir -p $(BUILD_DIR)
