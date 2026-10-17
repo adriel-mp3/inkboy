@@ -152,7 +152,6 @@ build_screen(struct inkboy_renderer *renderer,
         }
     }
     inkboy_draw_controls(buffer, layout);
-    inkboy_draw_centered_label(buffer, layout->width, &layout->exit, "EXIT", 4U);
     *buffer_out = buffer;
     return 0;
 }

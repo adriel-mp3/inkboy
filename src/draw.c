@@ -2,7 +2,6 @@
 
 #include "duck_bitmap.h"
 
-#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -207,8 +206,8 @@ label_width(const char *text, uint32_t scale)
     return length * (TITLE_GLYPH_WIDTH + 1U) * scale;
 }
 
-void
-inkboy_draw_centered_label(uint8_t *buffer, uint32_t width,
+static void
+draw_centered_label(uint8_t *buffer, uint32_t width,
                     const struct inkboy_rect *rect,
                     const char *text, uint32_t scale)
 {
@@ -255,13 +254,14 @@ inkboy_draw_controls(uint8_t *buffer, const struct inkboy_layout *layout)
               layout->l.width, layout->l.height);
     draw_rect(buffer, layout->width, layout->r.x, layout->r.y,
               layout->r.width, layout->r.height);
-    inkboy_draw_centered_label(buffer, layout->width, &layout->l, "L", CONTROL_SCALE);
-    inkboy_draw_centered_label(buffer, layout->width, &layout->r, "R", CONTROL_SCALE);
+    draw_centered_label(buffer, layout->width, &layout->l, "L", CONTROL_SCALE);
+    draw_centered_label(buffer, layout->width, &layout->r, "R", CONTROL_SCALE);
     draw_rect(buffer, layout->width, layout->select.x, layout->select.y,
               layout->select.width, layout->select.height);
     draw_rect(buffer, layout->width, layout->start.x, layout->start.y,
               layout->start.width, layout->start.height);
-    inkboy_draw_centered_label(buffer, layout->width, &layout->select, "SELECT", 3U);
-    inkboy_draw_centered_label(buffer, layout->width, &layout->start, "START", 3U);
+    draw_centered_label(buffer, layout->width, &layout->select, "SELECT", 3U);
+    draw_centered_label(buffer, layout->width, &layout->start, "START", 3U);
+    draw_centered_label(buffer, layout->width, &layout->exit, "EXIT", CONTROL_SCALE);
 }
 
