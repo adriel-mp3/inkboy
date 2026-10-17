@@ -30,8 +30,7 @@ initialization, the main loop, and shutdown.
   machine.
 - No changes to the validated rendering policy, refresh behavior, or Kindle
   root filesystem.
-- No replacement of the original duck asset or introduction of new runtime
-  dependencies.
+- No introduction of new runtime dependencies.
 
 ## Acceptance criteria
 
@@ -64,7 +63,6 @@ passed. The user confirmed display, virtual control response, EXIT gesture
 behavior and visual restoration. Signal and injected input-failure cleanup
 also completed successfully. See the
 [TASK-009 evidence](../experiments/09-gameplay-runtime.md). This validates the
-modules in the integrated gameplay runtime; the earlier static duck-screen
-verification remains historical evidence.
+modules in the integrated gameplay runtime.
 - [`03 — Touch input evidence`](../experiments/03-touch-input.md)
 - [`TASK-008 — Play a Game Boy Game`](TASK-008-play-a-game-boy-game.md)

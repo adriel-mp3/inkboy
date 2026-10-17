@@ -109,17 +109,10 @@ application.
 
 ## Recommendation
 
-Use the minimal FBInk-backed renderer for the static mascot screen. A GTK2
-fallback is not needed for this milestone because the PW5 framebuffer is
-accessible and FBInk can be built into the application without a runtime
-library dependency. This keeps the application small and makes the e-ink
-refresh request explicit. The renderer contains only:
-
-1. a monochrome raster generated from the original adriel.cloud duck SVG;
-2. a tiny built-in bitmap font for `InkBoy`;
-3. a single grayscale buffer and bounded placement calculation; and
-4. one FBInk raw-data write with refresh suppressed, one explicit full-screen
-   flashing refresh, and safe cleanup.
+The historical proof of concept established that FBInk can be built into the
+application without a runtime library dependency and can issue an explicit
+refresh request. Its temporary static artwork was removed when the project
+moved to gameplay; this report remains as hardware and dependency evidence.
 
 The screen buffer is allocated as YA (luminance plus alpha), which FBInk
 documents as the preferred Kindle raw-image format. The current PW5 geometry
@@ -127,36 +120,20 @@ requires 1236 × 1648 × 2 bytes, approximately 3.9 MiB, for the temporary
 buffer. InkBoy never maps `/dev/fb0`, writes framebuffer memory, or issues
 Kindle-specific ioctls itself; those operations remain inside FBInk.
 
-## Implemented proof of concept
+## Historical proof of concept
 
-`src/main.c` opens and initializes FBInk, reads the device geometry, centers a
-nearest-neighbor raster of `assets/duck.svg`, and draws a small built-in 5×7
-bitmap font spelling `InkBoy`. `tools/svg_to_bitmap.c` renders the original
-512×512 SVG to `src/duck_bitmap.h` at 256×256 during development. The original
-SVG is the visual source; no replacement mascot was drawn.
-
-Build commands:
-
-```sh
-make asset
-make TARGET=kindle KINDLE_CC=/path/to/arm-kindlehf-linux-gnueabihf-gcc build/inkboy
-make TARGET=host CC=gcc build/inkboy-host
-```
-
-The normal `make` and `bin/deploy` workflow remains the intended cross-build
-and deployment path. The host build only checks source/link completeness; it
-cannot render without a Kindle framebuffer.
+The static composition implementation and its build-only artwork conversion
+tool have been removed. The current runtime and build instructions are in the
+repository README and architecture overview.
 
 ## Hardware verification status
 
 The FBInk CLI text path was previously confirmed on the physical PW5, and the
 device probe above confirms the framebuffer geometry and device identity. The
-user visually confirmed the duck and `InkBoy` screen on the physical PW5 after
-launching it through KOReader's terminal plugin. This confirms the rendering
-path on the target hardware. The user also confirmed that normal termination
-restored the previous screen. This verifies both the rendering path and the
-normal restoration path on the target hardware. No specific ghosting
-measurement was recorded.
+user visually confirmed the historical static composition on the physical PW5
+after launching it through KOReader's terminal plugin. Normal termination
+restored the previous screen. This remains evidence for the FBInk path and
+restoration behavior. No specific ghosting measurement was recorded.
 
 ## Smallest next milestone
 

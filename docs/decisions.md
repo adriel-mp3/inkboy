@@ -9,10 +9,9 @@ fluxo atual do runtime estão em [`architecture.md`](architecture.md).
   Gambatte-K2.
 - O alvo é o Kindle Paperwhite 5 (11ª geração), firmware 5.19.2, com ARM
   32-bit hard-float.
-- O Stage 2 validado exibia o pato original e o texto `InkBoy` em uma composição
-  monocromática estática; o protótipo M5 atual integra gameplay via Libretro,
-  touchscreen e profiling. Gameplay, controles e saída com restauração foram
-  validados no PW5 na TASK-009; Power não é uma saída controlada suportada.
+- O protótipo atual integra gameplay via Libretro, touchscreen e profiling.
+  Gameplay, controles e saída com restauração foram validados no PW5 na
+  TASK-009; Power não é uma saída controlada suportada.
 - Menus e configuração de runtime continuam fora do escopo atual.
 
 ## Linguagem e dependências
@@ -23,8 +22,6 @@ fluxo atual do runtime estão em [`architecture.md`](architecture.md).
   waveform e espera de conclusão através de sua API pública.
 - O build usa uma versão mínima e estaticamente vinculada do FBInk, vendorizada
   no commit upstream `886f25f`.
-- librsvg/Cairo são ferramentas do host para converter `assets/duck.svg` em
-  bitmap C; não são dependências do Kindle.
 - Docker, Make e o SDK KindleHF preservam a compilação cruzada e o fluxo de
   deployment existentes.
 
@@ -44,8 +41,6 @@ fluxo atual do runtime estão em [`architecture.md`](architecture.md).
 
 ## Assets e licenças
 
-- `assets/duck.svg` é a fonte visual oficial e não deve ser redesenhado ou
-  substituído por um mascote inventado.
 - O projeto usa GNU GPL-3.0-only. Avisos e licenças de terceiros devem ser
   mantidos e a compatibilidade verificada antes de reutilizar código ou assets.
 

@@ -7,7 +7,6 @@ Libretro core, virtual touchscreen controls, and a minimal statically linked
 FBInk renderer. Presentation remains single-threaded with a conservative 1 FPS
 full-screen refresh. Gameplay, control response and normal shutdown/restoration
 have been validated on the physical PW5; Power is not a controlled exit.
-The original Stage 2 duck renderer remains a historical validated baseline.
 
 ## Build
 
@@ -100,8 +99,7 @@ The gameplay build uses fixed core/ROM paths; it stops through EXIT, SIGINT,
 SIGTERM, SIGHUP or a runtime error and attempts framebuffer restoration. The
 default core path is `/mnt/us/inkboy/sameboy_libretro.so`;
 the ROM is the Pokémon Yellow file under `/mnt/us/games` specified in `main.c`.
-The earlier Stage 2 duck screen and restoration have been physically verified;
-the gameplay path's separate physical matrix is recorded in the
+The gameplay path's physical matrix is recorded in the
 [TASK-009 runtime report](docs/experiments/09-gameplay-runtime.md). Historical
 TASK-010 profile measurements remain in the
 [presentation fluidity report](docs/experiments/10-presentation-fluidity.md).
