@@ -39,11 +39,9 @@ struct inkboy_layout {
     uint32_t header_bottom;
     uint32_t main_bottom;
     uint32_t primary_bottom;
-    uint32_t title_x;
-    uint32_t title_y;
-    uint32_t duck_x;
-    uint32_t duck_y;
-    uint32_t duck_size;
+    uint32_t viewport_x;
+    uint32_t viewport_y;
+    uint32_t viewport_size;
     struct inkboy_rect exit;
     struct inkboy_rect dpad;
     uint32_t dpad_arm;

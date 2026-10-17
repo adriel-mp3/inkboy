@@ -139,11 +139,9 @@ build_screen(struct inkboy_renderer *renderer,
         buffer[offset + 1U] = UINT8_MAX;
     }
 
-    inkboy_draw_title(buffer, layout->width, layout->title_x, layout->title_y);
     inkboy_profile_timer_stop(composition);
     if (frame == NULL) {
-        inkboy_draw_duck(buffer, layout->width, layout->duck_x, layout->duck_y,
-                  layout->duck_size);
+        /* Leave the game viewport blank until the core produces a frame. */
     } else if (renderer->policy.mode != INKBOY_REFRESH_FULL_FLASH) {
         struct inkboy_rect rect;
         if (inkboy_frame_rect(layout, frame, &rect) != 0) {

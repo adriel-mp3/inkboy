@@ -20,21 +20,21 @@ int inkboy_frame_rect(const struct inkboy_layout *layout,
     if (layout == NULL || rect == NULL || !valid_frame(frame)) {
         return -1;
     }
-    width = height = layout->duck_size;
+    width = height = layout->viewport_size;
     if ((uint64_t)width * frame->height <= (uint64_t)height * frame->width) {
         height = (uint32_t)((uint64_t)width * frame->height / frame->width);
     } else {
         width = (uint32_t)((uint64_t)height * frame->width / frame->height);
     }
-    if (width == 0U || height == 0U || layout->duck_x > layout->width ||
-        layout->duck_y > layout->height ||
-        layout->duck_size > layout->width - layout->duck_x ||
-        layout->duck_size > layout->height - layout->duck_y) {
+    if (width == 0U || height == 0U || layout->viewport_x > layout->width ||
+        layout->viewport_y > layout->height ||
+        layout->viewport_size > layout->width - layout->viewport_x ||
+        layout->viewport_size > layout->height - layout->viewport_y) {
         return -1;
     }
     *rect = (struct inkboy_rect){
-        layout->duck_x + (layout->duck_size - width) / 2U,
-        layout->duck_y + (layout->duck_size - height) / 2U, width, height
+        layout->viewport_x + (layout->viewport_size - width) / 2U,
+        layout->viewport_y + (layout->viewport_size - height) / 2U, width, height
     };
     return 0;
 }

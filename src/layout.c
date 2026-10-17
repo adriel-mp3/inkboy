@@ -5,15 +5,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define TITLE_SCALE 4U
-#define TITLE_GLYPH_WIDTH 5U
-#define TITLE_GLYPH_HEIGHT 7U
-#define TITLE_SPACING 2U
-#define TITLE_LENGTH 6U
-#define DUCK_MAX_SIZE 420U
-#define DUCK_MIN_SIZE 192U
+#define VIEWPORT_MAX_SIZE 420U
+#define VIEWPORT_MIN_SIZE 192U
 #define HEADER_SAFE_PERCENT 10U
-#define HEADER_CONTENT_OFFSET_PERCENT 1U
 #define HEADER_SIDE_MARGIN_PERCENT 3U
 #define EXIT_TOUCH_WIDTH_PERCENT 14U
 #define EXIT_TOUCH_HEIGHT_PERCENT 6U
@@ -55,29 +49,25 @@ inkboy_layout_build(struct inkboy_layout *layout, uint32_t width, uint32_t heigh
     layout->header_bottom = percent_of(height, HEADER_SAFE_PERCENT);
     layout->main_bottom = percent_of(height, 55U);
     layout->primary_bottom = percent_of(height, 90U);
-    layout->title_x = percent_of(width, HEADER_SIDE_MARGIN_PERCENT);
-    layout->title_y = layout->header_bottom +
-                      percent_of(height, HEADER_CONTENT_OFFSET_PERCENT);
     layout->exit.width = percent_of(width, EXIT_TOUCH_WIDTH_PERCENT);
     layout->exit.height = percent_of(height, EXIT_TOUCH_HEIGHT_PERCENT);
     layout->exit.x = width - percent_of(width, HEADER_SIDE_MARGIN_PERCENT) -
                      layout->exit.width;
-    layout->exit.y = layout->header_bottom +
-                     percent_of(height, HEADER_CONTENT_OFFSET_PERCENT);
+    layout->exit.y = layout->header_bottom;
 
-    layout->duck_size = percent_of(width, 38U);
-    if (layout->duck_size > DUCK_MAX_SIZE) {
-        layout->duck_size = DUCK_MAX_SIZE;
+    layout->viewport_size = percent_of(width, 38U);
+    if (layout->viewport_size > VIEWPORT_MAX_SIZE) {
+        layout->viewport_size = VIEWPORT_MAX_SIZE;
     }
-    if (layout->duck_size < DUCK_MIN_SIZE) {
-        layout->duck_size = DUCK_MIN_SIZE;
+    if (layout->viewport_size < VIEWPORT_MIN_SIZE) {
+        layout->viewport_size = VIEWPORT_MIN_SIZE;
     }
-    if (layout->duck_size > percent_of(layout->main_bottom - layout->header_bottom, 70U)) {
-        layout->duck_size = percent_of(layout->main_bottom - layout->header_bottom, 70U);
+    if (layout->viewport_size > percent_of(layout->main_bottom - layout->header_bottom, 70U)) {
+        layout->viewport_size = percent_of(layout->main_bottom - layout->header_bottom, 70U);
     }
-    layout->duck_x = (width - layout->duck_size) / 2U;
-    layout->duck_y = layout->header_bottom +
-                     (layout->main_bottom - layout->header_bottom - layout->duck_size) / 2U;
+    layout->viewport_x = (width - layout->viewport_size) / 2U;
+    layout->viewport_y = layout->header_bottom +
+                         (layout->main_bottom - layout->header_bottom - layout->viewport_size) / 2U;
 
     layout->dpad.width = percent_of(width, 36U);
     layout->dpad.height = layout->dpad.width;
@@ -110,13 +100,10 @@ inkboy_layout_build(struct inkboy_layout *layout, uint32_t width, uint32_t heigh
     layout->start.x = percent_of(width, 51U);
 
     if (width == 0U || height == 0U ||
-        layout->duck_size < DUCK_MIN_SIZE ||
+        layout->viewport_size < VIEWPORT_MIN_SIZE ||
         layout->main_bottom <= layout->header_bottom ||
         layout->primary_bottom <= layout->main_bottom ||
         layout->primary_bottom + percent_of(height, 10U) > height ||
-        layout->title_x +
-            (TITLE_LENGTH * TITLE_GLYPH_WIDTH +
-             (TITLE_LENGTH - 1U) * TITLE_SPACING) * TITLE_SCALE > width ||
         layout->exit.x + layout->exit.width > width ||
         layout->dpad.y + layout->dpad.height > layout->primary_bottom ||
         layout->r.x + layout->r.width > width ||

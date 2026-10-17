@@ -3,7 +3,7 @@ $(foreach clean,30 60,$(eval PROFILE_TEST_FLAGS_auto-4-$(clean) := -DINKBOY_EXPE
 $(foreach clean,30 60,$(eval PROFILE_TEST_FLAGS_gc16-4-$(clean) := -DINKBOY_EXPERIMENT_FPS=4 -DINKBOY_EXPERIMENT_MODE=INKBOY_REFRESH_REGION_GC16 -DINKBOY_EXPERIMENT_CLEAN_SECONDS=$(clean)))
 PROFILE_TEST_BINS := $(addprefix build/test-render-,$(PROFILE_TEST_NAMES))
 TEST_BINS := $(TEST_OUTPUT) $(LIBRETRO_TEST_OUTPUT) build/test-input build/test-runtime \
-	build/test-frame build/test-draw build/test-render build/test-profile $(PROFILE_TEST_BINS)
+	build/test-frame build/test-render build/test-profile $(PROFILE_TEST_BINS)
 
 test: $(TEST_BINS)
 	@set -e; for test_binary in $(TEST_BINS); do \
@@ -40,10 +40,6 @@ build/test-runtime: tests/test_runtime.c src/main.c src/profile.c $(wildcard src
 build/test-frame: tests/test_frame.c src/frame.c src/frame.h src/layout.c src/layout.h
 	@mkdir -p $(BUILD_DIR)
 	$(HOST_CC) $(COMMON_CFLAGS) -Isrc $< src/frame.c src/layout.c -o $@
-
-build/test-draw: tests/test_draw.c src/draw.c src/layout.c src/draw.h src/layout.h $(ASSET_HEADER)
-	@mkdir -p $(BUILD_DIR)
-	$(HOST_CC) $(COMMON_CFLAGS) -Isrc $< src/draw.c src/layout.c -o $@
 
 build/test-render: tests/test_render.c src/render.c src/draw.c src/frame.c src/profile.c src/layout.c $(wildcard src/*.h)
 	@mkdir -p $(BUILD_DIR)

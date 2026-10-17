@@ -1,14 +1,3 @@
-$(ASSET_TOOL): tools/svg_to_bitmap.c
-	@mkdir -p $(dir $@)
-	$(HOST_CC) -std=c11 -Wall -Wextra -Wpedantic \
-		$$(pkg-config --cflags cairo gobject-2.0) $< \
-		$$(pkg-config --libs cairo gobject-2.0) -ldl -o $@
-
-$(ASSET_HEADER): assets/duck.svg $(ASSET_TOOL)
-	$(ASSET_TOOL) $< $@ 256 256
-
-asset: $(ASSET_HEADER)
-
 ifeq ($(TARGET),host)
 CC           := gcc
 OUTPUT       := build/$(PROJECT)-host
@@ -33,7 +22,7 @@ build/libfbink-$(TARGET).a: $(FBINK_OBJECTS)
 	$(AR) rcs $@ $^
 	$(RANLIB) $@
 
-$(OUTPUT): $(APP_OBJECTS) $(ASSET_HEADER) build/libfbink-$(TARGET).a
+$(OUTPUT): $(APP_OBJECTS) build/libfbink-$(TARGET).a
 	@mkdir -p $(BUILD_DIR)
 	$(CC) $(COMMON_CFLAGS) -D_POSIX_C_SOURCE=200809L -Isrc -I$(FBINK_DIR) $(APP_OBJECTS) \
 		build/libfbink-$(TARGET).a -ldl -lm -o $@

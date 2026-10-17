@@ -37,7 +37,7 @@ test_layout_and_controls(void)
     assert(inkboy_layout_build(&layout, 1236U, 1648U) == 0);
     assert(layout.width == 1236U);
     assert(layout.height == 1648U);
-    assert(layout.duck_size >= 192U);
+    assert(layout.viewport_size >= 192U);
 
     dpad_center_x = layout.dpad.x + layout.dpad.width / 2U;
     dpad_center_y = layout.dpad.y + layout.dpad.height / 2U;

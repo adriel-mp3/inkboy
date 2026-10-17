@@ -1,25 +1,12 @@
 #include "draw.h"
 
-#include "duck_bitmap.h"
-
 #include <stddef.h>
 #include <stdint.h>
 
-#define TITLE_SCALE 4U
-#define TITLE_GLYPH_WIDTH 5U
-#define TITLE_GLYPH_HEIGHT 7U
-#define TITLE_SPACING 2U
+#define LABEL_GLYPH_WIDTH 5U
+#define LABEL_GLYPH_HEIGHT 7U
 #define CONTROL_SCALE 4U
 #define CONTROL_LINE_WIDTH 4U
-
-static const uint8_t title_glyphs[6U][TITLE_GLYPH_HEIGHT] = {
-    /* I */ {0x1f, 0x04, 0x04, 0x04, 0x04, 0x04, 0x1f},
-    /* n */ {0x00, 0x1e, 0x11, 0x11, 0x11, 0x11, 0x11},
-    /* k */ {0x11, 0x12, 0x14, 0x18, 0x14, 0x12, 0x11},
-    /* B */ {0x1e, 0x11, 0x11, 0x1e, 0x11, 0x11, 0x1e},
-    /* o */ {0x00, 0x0e, 0x11, 0x11, 0x11, 0x11, 0x0e},
-    /* y */ {0x11, 0x11, 0x11, 0x0a, 0x04, 0x04, 0x18},
-};
 
 static const uint8_t *
 label_glyph(char character)
@@ -60,65 +47,6 @@ set_pixel(uint8_t *buffer, uint32_t width, uint32_t x, uint32_t y, uint8_t gray)
     buffer[offset + 1U] = UINT8_MAX;
 }
 
-void
-inkboy_draw_duck(uint8_t *buffer,
-          uint32_t screen_width,
-          uint32_t origin_x,
-          uint32_t origin_y,
-          uint32_t size)
-{
-    uint32_t output_y;
-
-    for (output_y = 0U; output_y < size; output_y++) {
-        uint32_t source_y = (output_y * DUCK_BITMAP_HEIGHT) / size;
-        uint32_t output_x;
-
-        for (output_x = 0U; output_x < size; output_x++) {
-            uint32_t source_x = (output_x * DUCK_BITMAP_WIDTH) / size;
-            size_t source_offset =
-                (size_t)source_y * DUCK_BITMAP_STRIDE + (source_x / 8U);
-            uint8_t source_pixel = duck_bitmap[source_offset];
-
-            if ((source_pixel & (uint8_t)(1U << (7U - (source_x % 8U)))) != 0U) {
-                set_pixel(buffer, screen_width,
-                          origin_x + output_x, origin_y + output_y, 0U);
-            }
-        }
-    }
-}
-
-void
-inkboy_draw_title(uint8_t *buffer, uint32_t screen_width, uint32_t origin_x, uint32_t origin_y)
-{
-    uint32_t glyph;
-
-    for (glyph = 0U; glyph < 6U; glyph++) {
-        uint32_t row;
-
-        for (row = 0U; row < TITLE_GLYPH_HEIGHT; row++) {
-            uint32_t column;
-
-            for (column = 0U; column < TITLE_GLYPH_WIDTH; column++) {
-                uint8_t mask = (uint8_t)(1U << (TITLE_GLYPH_WIDTH - 1U - column));
-
-                if ((title_glyphs[glyph][row] & mask) != 0U) {
-                    uint32_t scale_y;
-
-                    for (scale_y = 0U; scale_y < TITLE_SCALE; scale_y++) {
-                        uint32_t scale_x;
-
-                        for (scale_x = 0U; scale_x < TITLE_SCALE; scale_x++) {
-                            set_pixel(buffer, screen_width,
-                                      origin_x + glyph * (TITLE_GLYPH_WIDTH + TITLE_SPACING) * TITLE_SCALE + column * TITLE_SCALE + scale_x,
-                                      origin_y + row * TITLE_SCALE + scale_y, 0U);
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
 static void
 draw_label(uint8_t *buffer, uint32_t screen_width, uint32_t origin_x, uint32_t origin_y,
            const char *text, uint32_t scale)
@@ -132,16 +60,16 @@ draw_label(uint8_t *buffer, uint32_t screen_width, uint32_t origin_x, uint32_t o
         if (glyph == NULL) {
             continue;
         }
-        for (row = 0U; row < TITLE_GLYPH_HEIGHT; row++) {
+        for (row = 0U; row < LABEL_GLYPH_HEIGHT; row++) {
             uint32_t column;
-            for (column = 0U; column < TITLE_GLYPH_WIDTH; column++) {
-                if ((glyph[row] & (uint8_t)(1U << (TITLE_GLYPH_WIDTH - 1U - column))) != 0U) {
+            for (column = 0U; column < LABEL_GLYPH_WIDTH; column++) {
+                if ((glyph[row] & (uint8_t)(1U << (LABEL_GLYPH_WIDTH - 1U - column))) != 0U) {
                     uint32_t y;
                     for (y = 0U; y < scale; y++) {
                         uint32_t x;
                         for (x = 0U; x < scale; x++) {
                             set_pixel(buffer, screen_width,
-                                      origin_x + glyph_index * (TITLE_GLYPH_WIDTH + 1U) * scale + column * scale + x,
+                                      origin_x + glyph_index * (LABEL_GLYPH_WIDTH + 1U) * scale + column * scale + x,
                                       origin_y + row * scale + y, 0U);
                         }
                     }
@@ -203,7 +131,7 @@ label_width(const char *text, uint32_t scale)
     while (text[length] != '\0') {
         length++;
     }
-    return length * (TITLE_GLYPH_WIDTH + 1U) * scale;
+    return length * (LABEL_GLYPH_WIDTH + 1U) * scale;
 }
 
 static void
@@ -212,7 +140,7 @@ draw_centered_label(uint8_t *buffer, uint32_t width,
                     const char *text, uint32_t scale)
 {
     uint32_t text_width = label_width(text, scale);
-    uint32_t text_height = TITLE_GLYPH_HEIGHT * scale;
+    uint32_t text_height = LABEL_GLYPH_HEIGHT * scale;
 
     draw_label(buffer, width,
                rect->x + (rect->width - text_width) / 2U,
@@ -226,7 +154,7 @@ draw_centered_circle_label(uint8_t *buffer, uint32_t width,
                            const char *text, uint32_t scale)
 {
     uint32_t text_width = label_width(text, scale);
-    uint32_t text_height = TITLE_GLYPH_HEIGHT * scale;
+    uint32_t text_height = LABEL_GLYPH_HEIGHT * scale;
 
     draw_label(buffer, width,
                circle->center_x - text_width / 2U,

@@ -26,7 +26,7 @@ validate-profile:
 validate-run-id:
 	@case "$(RUN_ID)" in ''|*[!a-zA-Z0-9._-]*) echo "RUN_ID may contain only letters, digits, dot, underscore and dash" >&2; exit 2;; esac
 
-build/obj/profiles/$(RUN_ID)/$(PROFILE)/%.o: src/%.c $(wildcard src/*.h) $(ASSET_HEADER)
+build/obj/profiles/$(RUN_ID)/$(PROFILE)/%.o: src/%.c $(wildcard src/*.h)
 	@mkdir -p $(dir $@)
 	$(CC) $(COMMON_CFLAGS) $(PROFILE_CPPFLAGS) $(PROFILE_FLAGS) -c $< -o $@
 
