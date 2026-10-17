@@ -14,7 +14,7 @@ KINDLE_SYSROOT ?= $(KINDLE_TC)/arm-kindlehf-linux-gnueabihf/sysroot
 KINDLE_CC   ?= $(KINDLE_TC)/bin/arm-kindlehf-linux-gnueabihf-gcc
 
 COMMON_CFLAGS := -std=c11 -Wall -Wextra -Wpedantic -O2
-APP_SOURCES   := src/main.c src/layout.c src/render.c src/input.c src/libretro.c src/frame.c src/profile.c
+APP_SOURCES   := src/main.c src/layout.c src/render.c src/draw.c src/input.c src/libretro.c src/frame.c src/profile.c
 APP_OBJECTS   := $(addprefix build/obj/$(TARGET)/,$(APP_SOURCES:src/%.c=%.o))
 TEST_SOURCE   := tests/test_layout.c
 TEST_OUTPUT   := build/test-layout
@@ -262,13 +262,13 @@ build/test-frame: tests/test_frame.c src/frame.c src/frame.h src/layout.c src/la
 	@mkdir -p $(BUILD_DIR)
 	$(HOST_CC) $(COMMON_CFLAGS) -Isrc $< src/frame.c src/layout.c -o $@
 
-build/test-render: tests/test_render.c src/render.c src/frame.c src/profile.c src/layout.c $(wildcard src/*.h)
+build/test-render: tests/test_render.c src/render.c src/draw.c src/frame.c src/profile.c src/layout.c $(wildcard src/*.h)
 	@mkdir -p $(BUILD_DIR)
-	$(HOST_CC) $(COMMON_CFLAGS) -Isrc -I$(FBINK_DIR) $< src/render.c src/frame.c src/profile.c src/layout.c -o $@
+	$(HOST_CC) $(COMMON_CFLAGS) -Isrc -I$(FBINK_DIR) $< src/render.c src/draw.c src/frame.c src/profile.c src/layout.c -o $@
 
-build/test-render-region: tests/test_render.c src/render.c src/frame.c src/profile.c src/layout.c $(wildcard src/*.h)
+build/test-render-region: tests/test_render.c src/render.c src/draw.c src/frame.c src/profile.c src/layout.c $(wildcard src/*.h)
 	@mkdir -p $(BUILD_DIR)
-	$(HOST_CC) $(COMMON_CFLAGS) -DINKBOY_PROFILE_GAME_REGION -Isrc -I$(FBINK_DIR) $< src/render.c src/frame.c src/profile.c src/layout.c -o $@
+	$(HOST_CC) $(COMMON_CFLAGS) -DINKBOY_PROFILE_GAME_REGION -Isrc -I$(FBINK_DIR) $< src/render.c src/draw.c src/frame.c src/profile.c src/layout.c -o $@
 
 build/test-profile: tests/test_profile.c src/profile.c src/profile.h
 	@mkdir -p $(BUILD_DIR)
@@ -398,9 +398,9 @@ endef
 $(foreach profile,$(TASK010_PROFILES),$(eval $(call TASK010_template,$(TARGET),$(profile))))
 
 define TASK010_test_template
-build/task010/test-$(1): tests/test_render.c src/render.c src/frame.c src/profile.c src/layout.c $$(wildcard src/*.h)
+build/task010/test-$(1): tests/test_render.c src/render.c src/draw.c src/frame.c src/profile.c src/layout.c $$(wildcard src/*.h)
 	@mkdir -p $$(dir $$@)
-	$$(HOST_CC) $$(COMMON_CFLAGS) $$(TASK010_FLAGS_$(1)) -Isrc -I$$(FBINK_DIR) $$< src/frame.c src/profile.c src/layout.c -o $$@
+	$$(HOST_CC) $$(COMMON_CFLAGS) $$(TASK010_FLAGS_$(1)) -Isrc -I$$(FBINK_DIR) $$< src/draw.c src/frame.c src/profile.c src/layout.c -o $$@
 endef
 $(foreach mode,auto gc16,$(foreach clean,30 60,$(eval $(call TASK010_test_template,$(mode)-4-$(clean)))))
 
