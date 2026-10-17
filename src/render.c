@@ -49,6 +49,21 @@ wait_for_complete(int fbfd)
 }
 
 static int
+ensure_gray_buffer(struct inkboy_renderer *renderer, size_t gray_size)
+{
+    if (renderer->gray_buffer_size < gray_size) {
+        uint8_t *storage = realloc(renderer->gray_buffer, gray_size);
+
+        if (storage == NULL) {
+            return -1;
+        }
+        renderer->gray_buffer = storage;
+        renderer->gray_buffer_size = gray_size;
+    }
+    return 0;
+}
+
+static int
 draw_game_frame(struct inkboy_renderer *renderer, uint8_t *buffer,
                 const struct inkboy_video_frame *frame)
 {
@@ -62,15 +77,9 @@ draw_game_frame(struct inkboy_renderer *renderer, uint8_t *buffer,
         return -1;
     }
     timer = inkboy_profile_timer_start(INKBOY_PROFILE_CONVERT);
-    if (renderer->gray_buffer_size < size) {
-        uint8_t *storage = realloc(renderer->gray_buffer, size);
-
-        if (storage == NULL) {
-            inkboy_profile_timer_cancel(timer);
-            return -1;
-        }
-        renderer->gray_buffer = storage;
-        renderer->gray_buffer_size = size;
+    if (ensure_gray_buffer(renderer, size) != 0) {
+        inkboy_profile_timer_cancel(timer);
+        return -1;
     }
     result = inkboy_frame_convert(frame, renderer->gray_buffer, size);
     inkboy_profile_timer_stop(timer);
@@ -287,14 +296,9 @@ static int prepare_region(struct inkboy_renderer *renderer,
         inkboy_profile_timer_cancel(timer);
         return -1;
     }
-    if (renderer->gray_buffer_size < gray_size) {
-        storage = realloc(renderer->gray_buffer, gray_size);
-        if (storage == NULL) {
-            inkboy_profile_timer_cancel(timer);
-            return -1;
-        }
-        renderer->gray_buffer = storage;
-        renderer->gray_buffer_size = gray_size;
+    if (ensure_gray_buffer(renderer, gray_size) != 0) {
+        inkboy_profile_timer_cancel(timer);
+        return -1;
     }
     if (inkboy_frame_convert(frame, renderer->gray_buffer, gray_size) != 0) {
         inkboy_profile_timer_cancel(timer);
