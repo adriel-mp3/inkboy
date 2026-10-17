@@ -1,8 +1,7 @@
 # InkBoy — decisões do projeto
 
-Este documento registra decisões curtas e estáveis. A descrição de como os
-componentes se relacionam, por que C é usado e como o fluxo de renderização
-funciona está em [`architecture.md`](architecture.md).
+Este documento registra decisões curtas e estáveis. O mapa de módulos e o
+fluxo atual do runtime estão em [`architecture.md`](architecture.md).
 
 ## Produto e escopo
 
@@ -67,6 +66,6 @@ funciona está em [`architecture.md`](architecture.md).
 - Alterar linguagem, biblioteca de display, política de refresh, threading ou
   integrar emulação exige uma decisão e validação próprias.
 
-Para o racional detalhado do FBInk e os limites da arquitetura, consulte
-[`architecture.md`](architecture.md). Para as evidências experimentais,
-consulte [`experiments/`](experiments/).
+Para o histórico técnico e as evidências do FBInk, consulte
+[`experiments/02-rendering.md`](experiments/02-rendering.md). Para as demais
+evidências experimentais, consulte [`experiments/`](experiments/).

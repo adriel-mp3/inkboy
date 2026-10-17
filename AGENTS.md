@@ -20,8 +20,9 @@
 - The renderer saves the prior framebuffer with `fbink_dump`, performs one
   explicit refresh, and restores the dump on normal termination. Visual
   rendering and normal restoration on the physical PW5 are verified.
-- The rationale and conditions for eventually removing the vendored FBInk
-  dependency are documented in [docs/architecture.md](docs/architecture.md).
+- The vendored FBInk decision and removal conditions are summarized in
+  [docs/decisions.md](docs/decisions.md); device investigation is recorded in
+  [docs/experiments/02-rendering.md](docs/experiments/02-rendering.md).
 - InkBoy uses GNU GPL-3.0-only. Preserve third-party notices and check
   compatibility before reusing code or assets.
 

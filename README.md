@@ -115,9 +115,9 @@ decision summary.
 See [docs/compatibility.md](docs/compatibility.md) for the PW5 ABI and known
 compatibility blockers. See
 [docs/experiments/02-rendering.md](docs/experiments/02-rendering.md) for the
-FBInk dependency, refresh strategy, and hardware-test status. The rationale
-for vendoring FBInk is recorded in
-[docs/architecture.md](docs/architecture.md).
+FBInk dependency, refresh strategy, and hardware-test status. The vendoring
+decision and removal conditions are summarized in
+[docs/decisions.md](docs/decisions.md).
 
 ## License
 
