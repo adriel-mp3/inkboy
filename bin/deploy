@@ -3,12 +3,8 @@
 set -Eeuo pipefail
 
 readonly PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-readonly SSH_ALIAS="kindle"
-readonly REMOTE_DIR="/mnt/us/inkboy"
-readonly REMOTE_BIN="${REMOTE_DIR}/inkboy"
-readonly REMOTE_TOUCH_PROBE="${REMOTE_DIR}/touch_probe"
-readonly LOCAL_BIN="${PROJECT_ROOT}/build/inkboy"
-readonly LOCAL_TOUCH_PROBE="${PROJECT_ROOT}/build/touch_probe"
+readonly SSH_ALIAS="${KINDLE_SSH_ALIAS:-kindle}"
+readonly REMOTE_ROOT="${KINDLE_REMOTE_ROOT:-/mnt/us/inkboy}"
 
 die() {
     printf 'deploy: %s\n' "$*" >&2
@@ -16,63 +12,110 @@ die() {
 }
 
 usage() {
-    printf 'Usage: %s [--run|--probe]\n' "${0##*/}"
+    cat <<'EOF'
+Usage:
+  bin/deploy install RUN_ID
+  bin/deploy run RUN_ID
+  bin/deploy stop RUN_ID
+  bin/deploy collect RUN_ID
+  bin/deploy [--run|--probe]   (legacy build and deploy)
+EOF
 }
 
-run_remote() {
-    ssh "$SSH_ALIAS" "$@"
+require_commands() {
+    local command_name
+    for command_name in "$@"; do
+        command -v "$command_name" >/dev/null 2>&1 || die "$command_name is required"
+    done
 }
 
-run_program=false
-run_probe=false
-case "${1:-}" in
-    '')
-        ;;
-    --run)
-        run_program=true
-        ;;
-    --probe)
-        run_probe=true
-        ;;
-    --help|-h)
-        usage
-        exit 0
-        ;;
-    *)
-        usage >&2
-        exit 2
-        ;;
-esac
+run_ssh() {
+    timeout 20 ssh -o BatchMode=yes -o ConnectTimeout=10 \
+        -o ServerAliveInterval=3 -o ServerAliveCountMax=2 "$SSH_ALIAS" "$@"
+}
 
-if $run_program && $run_probe; then
-    usage >&2
-    exit 2
-fi
+run_scp() {
+    timeout 30 scp -O -o BatchMode=yes -o ConnectTimeout=10 \
+        -o ServerAliveInterval=3 -o ServerAliveCountMax=2 "$@"
+}
 
-command -v make >/dev/null 2>&1 || die "make is required"
-command -v ssh >/dev/null 2>&1 || die "ssh is required"
-command -v scp >/dev/null 2>&1 || die "scp is required"
+valid_run_id() {
+    [[ "$1" =~ ^[a-zA-Z0-9][a-zA-Z0-9._-]*$ ]]
+}
 
-printf '[1/4] Building Kindle executables\n'
-make -C "$PROJECT_ROOT"
+remote_run_dir() {
+    printf '%s/runs/%s' "$REMOTE_ROOT" "$1"
+}
 
-[[ -x "$LOCAL_BIN" ]] || die "build did not produce executable: $LOCAL_BIN"
-[[ -x "$LOCAL_TOUCH_PROBE" ]] || die "build did not produce executable: $LOCAL_TOUCH_PROBE"
+legacy_deploy() {
+    local mode="${1:-}"
+    local local_bin="${PROJECT_ROOT}/build/inkboy"
+    local local_probe="${PROJECT_ROOT}/build/touch_probe"
+    local remote_dir="$REMOTE_ROOT"
+    require_commands make ssh scp timeout
+    [[ "$mode" == "" || "$mode" == "--run" || "$mode" == "--probe" ]] || { usage >&2; exit 2; }
+    printf '[1/4] Building Kindle executables\n'
+    make -C "$PROJECT_ROOT"
+    [[ -x "$local_bin" && -x "$local_probe" ]] || die "build did not produce expected executables"
+    printf '[2/4] Checking SSH connection to %s\n' "$SSH_ALIAS"
+    run_ssh true || die "could not connect to SSH host '$SSH_ALIAS'"
+    printf '[3/4] Deploying InkBoy and touch_probe\n'
+    run_ssh mkdir -p "$remote_dir"
+    run_scp "$local_bin" "$local_probe" "${SSH_ALIAS}:${remote_dir}/"
+    run_ssh chmod +x "$remote_dir/inkboy" "$remote_dir/touch_probe"
+    printf '[4/4] Deployment complete\n'
+    if [[ "$mode" == "--probe" ]]; then
+        run_ssh "$remote_dir/touch_probe"
+    elif [[ "$mode" == "--run" ]]; then
+        run_ssh "$remote_dir/inkboy"
+    fi
+}
 
-printf '[2/4] Checking SSH connection to %s\n' "$SSH_ALIAS"
-run_remote true || die "could not connect to SSH host '$SSH_ALIAS'"
+main() {
+    local action="${1:-}"
+    if [[ "$action" == "--help" || "$action" == "-h" ]]; then usage; return 0; fi
+    if [[ "$action" == "" || "$action" == "--run" || "$action" == "--probe" ]]; then
+        legacy_deploy "$action"
+        return
+    fi
 
-printf '[3/4] Deploying InkBoy and touch_probe\n'
-run_remote mkdir -p "$REMOTE_DIR"
-scp -O "$LOCAL_BIN" "$LOCAL_TOUCH_PROBE" "${SSH_ALIAS}:${REMOTE_DIR}/"
-run_remote chmod +x "$REMOTE_BIN"
-run_remote chmod +x "$REMOTE_TOUCH_PROBE"
+    [[ $# == 2 ]] || { usage >&2; exit 2; }
+    local run_id="$2"
+    valid_run_id "$run_id" || die "invalid run id: $run_id"
+    local remote_dir
+    remote_dir="$(remote_run_dir "$run_id")"
+    local package_dir="${PROJECT_ROOT}/build/packages/${run_id}"
+    local result_dir="${PROJECT_ROOT}/build/results/${run_id}"
 
-printf '[4/4] Deployment complete\n'
-if $run_probe; then
-    printf 'Running %s\n' "$REMOTE_TOUCH_PROBE"
-    run_remote "$REMOTE_TOUCH_PROBE"
-elif $run_program; then
-    printf 'Running %s\n' "$REMOTE_BIN"
-    run_remote "$REMOTE_BIN"
-fi
+    case "$action" in
+        install)
+            require_commands ssh scp timeout
+            [[ -x "$package_dir/inkboy" && -f "$package_dir/sameboy_libretro.so" && -f "$package_dir/MANIFEST" && -f "$package_dir/SHA256SUMS" ]] || die "package missing or incomplete: $package_dir"
+            run_ssh true || die "could not connect to SSH host '$SSH_ALIAS'"
+            run_ssh "test ! -e '$remote_dir' && mkdir -p '$REMOTE_ROOT/runs'" || die "run directory already exists or cannot be prepared: $remote_dir"
+            run_scp -r "$package_dir" "${SSH_ALIAS}:${REMOTE_ROOT}/runs/"
+            run_ssh "chmod +x '$remote_dir/inkboy' && cd '$remote_dir' && sha256sum -c SHA256SUMS"
+            printf 'Installed run %s at %s\n' "$run_id" "$remote_dir"
+            ;;
+        run)
+            require_commands ssh timeout
+            run_ssh "test -x '$remote_dir/inkboy' && cd '$remote_dir' && test ! -e control.pid && printf 'run_id=%s\\n' '$run_id' >runtime.log && cat MANIFEST SHA256SUMS >>runtime.log && (nohup ./inkboy >>runtime.log 2>&1 </dev/null & echo \$! >control.pid)"
+            printf 'Started run %s; log: %s/runtime.log\n' "$run_id" "$remote_dir"
+            ;;
+        stop)
+            require_commands ssh timeout
+            run_ssh "test -r '$remote_dir/control.pid' || exit 1; pid=\$(cat '$remote_dir/control.pid'); test \"\$(readlink /proc/\$pid/exe)\" = '$remote_dir/inkboy' || exit 1; kill -TERM \"\$pid\" || exit 1; for attempt in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do if test \"\$(readlink /proc/\$pid/exe 2>/dev/null)\" != '$remote_dir/inkboy'; then exit 0; fi; sleep 1; done; echo 'process did not exit after SIGTERM' >&2; exit 1"
+            printf 'Stopped run %s after its cleanup completed\n' "$run_id"
+            ;;
+        collect)
+            require_commands ssh timeout tar
+            mkdir -p "${PROJECT_ROOT}/build/results"
+            mkdir "$result_dir" || die "results already collected: $result_dir"
+            run_ssh "tar -C '$remote_dir' -cf - runtime.log MANIFEST SHA256SUMS" | tar -C "$result_dir" -xf -
+            printf 'Collected results in %s\n' "$result_dir"
+            ;;
+        *) usage >&2; exit 2 ;;
+    esac
+}
+
+main "$@"

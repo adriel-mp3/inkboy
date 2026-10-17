@@ -6,3 +6,4 @@ include mk/tests.mk
 include mk/task009.mk
 include mk/app.mk
 include mk/task010.mk
+include mk/workflow.mk

@@ -12,6 +12,10 @@ DOCKER        ?= docker
 KINDLE_TC    ?= /opt/x-tools/arm-kindlehf-linux-gnueabihf
 KINDLE_SYSROOT ?= $(KINDLE_TC)/arm-kindlehf-linux-gnueabihf/sysroot
 KINDLE_CC   ?= $(KINDLE_TC)/bin/arm-kindlehf-linux-gnueabihf-gcc
+KINDLE_REMOTE_ROOT ?= /mnt/us/inkboy
+KINDLE_SSH_ALIAS ?= kindle
+export KINDLE_REMOTE_ROOT KINDLE_SSH_ALIAS
+
 COMMON_CFLAGS := -std=c11 -Wall -Wextra -Wpedantic -O2
 APP_SOURCES   := src/main.c src/layout.c src/render.c src/draw.c src/input.c src/libretro.c src/frame.c src/profile.c
 APP_OBJECTS   := $(addprefix build/obj/$(TARGET)/,$(APP_SOURCES:src/%.c=%.o))
