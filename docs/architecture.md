@@ -37,7 +37,7 @@ The main data flows are:
 - **Emulation:** SameBoy produces XRGB8888 video → Libretro adapter retains the
   latest valid frame.
 - **Rendering:** frame conversion/scaling → screen composition → FBInk draw,
-  refresh submission, and synchronous completion wait.
+  refresh submission, with completion waits deferred during ordinary gameplay.
 
 The standard presentation policy targets 2 FPS with regional GC16 refreshes.
 The first frame and geometry changes refresh the full screen; ordinary updates

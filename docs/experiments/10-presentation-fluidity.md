@@ -85,13 +85,17 @@ requested update, rectangle, waveform and flash flag. INITIAL includes subsequen
 full geometry rebuilds. PARTIAL means an ordinary presentation; the conservative
 baseline still refreshes the full screen for that result.
 
-Completed counters advance only after submission **and** wait succeed:
+In synchronous profiles, completed counters advance only after submission
+**and** wait succeed. The asynchronous presentation follow-up defers waits for
+ordinary updates, so its normal presentation counters measure accepted
+submissions; the driver may merge queued requests, and these counters do not
+prove that every request became a separate visible update.
 
 | Metric | Interpretation |
 | --- | --- |
 | `presentations` | All successfully completed initial, normal and cleanup updates |
 | `initial_presentations` | Initial/full geometry updates |
-| `normal_presentations`, `normal_fps` | Ordinary completed updates / phase wall time |
+| `normal_presentations`, `normal_fps` | Successful ordinary updates / phase wall time; asynchronous runs count accepted submissions |
 | `cleanups`, `cleanup_fps` | Completed periodic regional cleanups / phase wall time |
 | `unchanged_images` | Selected images skipped without drawing or refreshing |
 | `refresh_attempts`, `refresh_failures` | Submitted attempts and failed submission/completion calls |
@@ -116,7 +120,7 @@ test the cadence criterion in scenes with movement. Producer `superseded_frames`
 counts overwrites before selection, including selections subsequently skipped;
 it is not a count of completed updates.
 
-Each completed update emits a cumulative profile line. `*_last_ms` values from
+Each successful update emits a cumulative profile line. `*_last_ms` values from
 successive normal completion events provide the normal p95 distribution; cleanups
 and initial updates have independent distributions. CPU/RSS remain phase/run
 measurements rather than being attributed artificially to a waveform. The final

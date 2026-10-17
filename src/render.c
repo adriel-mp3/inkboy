@@ -30,6 +30,7 @@ struct inkboy_renderer {
     struct inkboy_rect last_game_rect;
     unsigned last_width, last_height;
     bool frame_presented;
+    bool refresh_pending;
     uint64_t last_cleanup;
     struct inkboy_presentation_policy policy;
 };
@@ -213,7 +214,7 @@ inkboy_renderer_open(struct inkboy_renderer **renderer_out)
 
     fbink_get_state(&renderer->config, &renderer->state);
     fprintf(stdout, "display event=open screen=%ux%u viewport=%ux%u origin=%u,%u"
-            " fbink=%s policy=%d display_cap_fps=%u cleanup_s=%llu synchronous=1\n",
+            " fbink=%s policy=%d display_cap_fps=%u cleanup_s=%llu async_partial=1\n",
             renderer->state.screen_width, renderer->state.screen_height,
             renderer->state.view_width, renderer->state.view_height,
             renderer->state.view_hori_origin, renderer->state.view_vert_origin,
@@ -342,11 +343,14 @@ inkboy_renderer_present_frame(struct inkboy_renderer *renderer,
     short draw_x = 0, draw_y = 0;
     enum inkboy_present_result kind;
     enum inkboy_profile_stage submit_stage, wait_stage;
+    uint64_t trace_start_ns;
+    uint64_t prepare_end_ns, draw_end_ns, submit_end_ns;
 
     if (renderer == NULL || frame == NULL ||
         inkboy_frame_rect(&renderer->layout, frame, &game_rect) != 0) {
         return INKBOY_PRESENT_ERROR;
     }
+    trace_start_ns = inkboy_profile_now();
     experimental = renderer->policy.mode != INKBOY_REFRESH_FULL_FLASH;
     geometry_changed = !renderer->frame_presented ||
         frame->width != renderer->last_width || frame->height != renderer->last_height ||
@@ -366,7 +370,12 @@ inkboy_renderer_present_frame(struct inkboy_renderer *renderer,
             bool cleanup_due = now - renderer->last_cleanup >= renderer->policy.cleanup_ns;
             if (!cleanup_due && renderer->last_image_size == buffer_size &&
                 memcmp(renderer->region_buffer, renderer->last_image, buffer_size) == 0) {
+                prepare_end_ns = inkboy_profile_now();
                 inkboy_profile_image_unchanged();
+                fprintf(stdout, "display event=trace kind=unchanged prepare_ms=%.3f"
+                        " draw_ms=0.000 submit_ms=0.000 wait_ms=0.000 total_ms=%.3f\n",
+                        (prepare_end_ns - trace_start_ns) / 1000000.0,
+                        (prepare_end_ns - trace_start_ns) / 1000000.0);
                 return INKBOY_PRESENT_UNCHANGED;
             }
             kind = cleanup_due ? INKBOY_PRESENT_CLEANUP : INKBOY_PRESENT_PARTIAL;
@@ -385,6 +394,17 @@ inkboy_renderer_present_frame(struct inkboy_renderer *renderer,
             renderer->last_image_size = buffer_size;
         }
     }
+    /* Fence queued game updates before a flashing cleanup or full redraw. */
+    if (renderer->refresh_pending && kind != INKBOY_PRESENT_PARTIAL) {
+        timer = inkboy_profile_timer_start(INKBOY_PROFILE_REFRESH_WAIT);
+        result = wait_for_complete(renderer->fbfd);
+        inkboy_profile_timer_stop(timer);
+        if (result != 0) {
+            fprintf(stderr, "inkboy: pending refresh completion failed: %d\n", result);
+            return INKBOY_PRESENT_ERROR;
+        }
+        renderer->refresh_pending = false;
+    }
     if (full_screen) {
         if (inkboy_buffer_size(draw_width, draw_height, &buffer_size) != 0 ||
             build_screen(renderer, frame, &buffer) != 0) return INKBOY_PRESENT_ERROR;
@@ -397,12 +417,14 @@ inkboy_renderer_present_frame(struct inkboy_renderer *renderer,
         }
         renderer->dump_saved = true;
     }
+    prepare_end_ns = inkboy_profile_now();
     renderer->config.no_refresh = true;
     timer = inkboy_profile_timer_start(INKBOY_PROFILE_DRAW);
     result = fbink_print_raw_data(renderer->fbfd, buffer,
                                   (int)draw_width, (int)draw_height,
                                   buffer_size, draw_x, draw_y, &renderer->config);
     inkboy_profile_timer_stop(timer);
+    draw_end_ns = inkboy_profile_now();
     if (result != 0) {
         fprintf(stderr, "inkboy: unable to draw the game frame: %d\n", result);
         return INKBOY_PRESENT_ERROR;
@@ -434,15 +456,24 @@ inkboy_renderer_present_frame(struct inkboy_renderer *renderer,
         ? fbink_refresh(renderer->fbfd, 0U, 0U, 0U, 0U, &renderer->refresh_config)
         : fbink_refresh_rect(renderer->fbfd, &draw_rect, &renderer->refresh_config);
     inkboy_profile_timer_stop(timer);
+    submit_end_ns = inkboy_profile_now();
     if (result != 0) {
         fprintf(stderr, "inkboy: unable to refresh the game frame: %d\n", result);
         inkboy_profile_refresh_failed(kind == INKBOY_PRESENT_INITIAL ? INKBOY_PROFILE_PRESENT_INITIAL :
             kind == INKBOY_PRESENT_CLEANUP ? INKBOY_PROFILE_PRESENT_CLEANUP : INKBOY_PROFILE_PRESENT_NORMAL);
         return INKBOY_PRESENT_ERROR;
     }
-    timer = inkboy_profile_timer_start(wait_stage);
-    result = wait_for_complete(renderer->fbfd);
-    inkboy_profile_timer_stop(timer);
+    bool defer_wait = experimental && kind == INKBOY_PRESENT_PARTIAL;
+    renderer->refresh_pending = true;
+    if (!defer_wait) {
+        timer = inkboy_profile_timer_start(wait_stage);
+        result = wait_for_complete(renderer->fbfd);
+        inkboy_profile_timer_stop(timer);
+        if (result == 0) renderer->refresh_pending = false;
+    } else {
+        result = 0;
+    }
+    uint64_t complete_ns = inkboy_profile_now();
     if (result != 0) {
         fprintf(stderr, "inkboy: refresh completion failed: %d\n", result);
         inkboy_profile_refresh_failed(kind == INKBOY_PRESENT_INITIAL ? INKBOY_PROFILE_PRESENT_INITIAL :
@@ -459,6 +490,16 @@ inkboy_renderer_present_frame(struct inkboy_renderer *renderer,
     if (kind != INKBOY_PRESENT_PARTIAL) renderer->last_cleanup = inkboy_profile_now();
     inkboy_profile_frame_presented(kind == INKBOY_PRESENT_INITIAL ? INKBOY_PROFILE_PRESENT_INITIAL :
         kind == INKBOY_PRESENT_CLEANUP ? INKBOY_PROFILE_PRESENT_CLEANUP : INKBOY_PROFILE_PRESENT_NORMAL);
+    fprintf(stdout, "display event=trace kind=%s prepare_ms=%.3f draw_ms=%.3f"
+            " submit_ms=%.3f wait_ms=%.3f completion=%s total_ms=%.3f\n",
+            kind == INKBOY_PRESENT_INITIAL ? "initial" :
+            kind == INKBOY_PRESENT_CLEANUP ? "cleanup" : "normal",
+            (prepare_end_ns - trace_start_ns) / 1000000.0,
+            (draw_end_ns - prepare_end_ns) / 1000000.0,
+            (submit_end_ns - draw_end_ns) / 1000000.0,
+            (complete_ns - submit_end_ns) / 1000000.0,
+            defer_wait ? "deferred" : "complete",
+            (complete_ns - trace_start_ns) / 1000000.0);
     return kind;
 }
 
@@ -484,6 +525,16 @@ inkboy_renderer_close(struct inkboy_renderer *renderer)
         return 0;
     }
     if (renderer->dump_saved) {
+        if (renderer->refresh_pending) {
+            struct inkboy_profile_timer pending_timer =
+                inkboy_profile_timer_start(INKBOY_PROFILE_REFRESH_WAIT);
+            result = wait_for_complete(renderer->fbfd);
+            fprintf(stdout, "cleanup stage=pending_refresh_wait result=%d duration_ms=%.3f\n",
+                    result, inkboy_profile_timer_elapsed_ns(pending_timer) / 1000000.0);
+            inkboy_profile_timer_stop(pending_timer);
+            if (result == 0) renderer->refresh_pending = false;
+            else fprintf(stderr, "inkboy: pending refresh wait failed: %d\n", result);
+        }
         struct inkboy_profile_timer restore_timer =
             inkboy_profile_timer_start(INKBOY_PROFILE_RESTORE);
 

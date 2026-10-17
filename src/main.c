@@ -23,6 +23,12 @@ static volatile sig_atomic_t stop_signal;
 static struct inkboy_profile_timer last_input_poll;
 static bool poll_after_cleanup;
 
+static uint64_t monotonic_ns(const struct timespec *value)
+{
+    return (uint64_t)value->tv_sec * UINT64_C(1000000000) +
+           (uint64_t)value->tv_nsec;
+}
+
 static void request_stop(int signal_number)
 {
     stop_signal = signal_number;
@@ -125,6 +131,7 @@ int main(void)
     struct inkboy_video_frame frame;
     struct timespec next_run;
     uint64_t next_display;
+    uint64_t last_presentation_attempt = 0U;
     const struct inkboy_presentation_policy policy = inkboy_presentation_policy();
     const uint64_t display_period = UINT64_C(1000000000) / policy.fps;
     double emulation_fps;
@@ -186,6 +193,7 @@ int main(void)
     if (clock_gettime(CLOCK_MONOTONIC, &next_run) != 0) {
         goto cleanup;
     }
+    last_presentation_attempt = monotonic_ns(&next_run);
     emulation_fps = inkboy_libretro_fps(emulator);
     next_display = (uint64_t)next_run.tv_sec * UINT64_C(1000000000) +
                    (uint64_t)next_run.tv_nsec + display_period;
@@ -230,8 +238,13 @@ int main(void)
         }
         uint64_t now_ns = (uint64_t)now.tv_sec * UINT64_C(1000000000) + (uint64_t)now.tv_nsec;
         if (now_ns >= next_display) {
-            if (inkboy_libretro_frame(emulator, &frame)) {
-                enum inkboy_present_result presented = inkboy_renderer_present_frame(renderer, &frame);
+            uint64_t present_start_ns = now_ns;
+            uint64_t interval_ns = present_start_ns - last_presentation_attempt;
+            uint64_t deadline_late_ns = present_start_ns - next_display;
+            enum inkboy_present_result presented = INKBOY_PRESENT_UNCHANGED;
+            bool frame_available = inkboy_libretro_frame(emulator, &frame);
+            if (frame_available) {
+                presented = inkboy_renderer_present_frame(renderer, &frame);
                 if (presented < 0) {
                     reason = "presentation-error";
                     goto cleanup;
@@ -244,6 +257,17 @@ int main(void)
                 goto cleanup;
             }
             now_ns = (uint64_t)now.tv_sec * UINT64_C(1000000000) + (uint64_t)now.tv_nsec;
+            fprintf(stdout, "runtime event=presentation result=%s"
+                    " since_previous_attempt_ms=%.3f deadline_late_ms=%.3f"
+                    " presentation_call_ms=%.3f\n",
+                    presented == INKBOY_PRESENT_INITIAL ? "initial_completed" :
+                    presented == INKBOY_PRESENT_PARTIAL ?
+                        "normal_submitted" :
+                    presented == INKBOY_PRESENT_CLEANUP ? "cleanup_completed" :
+                    frame_available ? "unchanged" : "no_frame",
+                    interval_ns / 1000000.0, deadline_late_ns / 1000000.0,
+                    (now_ns - present_start_ns) / 1000000.0);
+            last_presentation_attempt = present_start_ns;
             next_display = inkboy_next_deadline(next_display, now_ns, display_period);
             /* Drop emulation debt too; no burst after a blocking refresh. */
             if (before(next_run, now)) next_run = now;
