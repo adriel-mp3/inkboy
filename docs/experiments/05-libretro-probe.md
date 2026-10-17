@@ -1,5 +1,8 @@
 # Stage 5.2 — SameBoy Libretro probe
 
+Archived experiment record. The standalone probe and its build/deploy targets
+were removed after the gameplay integration superseded them.
+
 This experiment is an independent host/PW5 probe. It does not link FBInk,
 touch input, audio output, or `src/main.c`. SameBoy is included as the official
 Git submodule at `third_party/sameboy`, fixed to

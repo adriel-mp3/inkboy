@@ -1,5 +1,9 @@
 # TASK-010 — Presentation fluidity experiments
 
+Archived experiment record. The old matrix builder and device launcher were
+removed; the current Make profiling workflow builds and runs one selected
+profile at a time.
+
 Date: 2026-10-16. Status: implementation and local validation complete;
 PW5 screening found no qualifying 2/4 FPS candidate. Further testing stopped
 at the user’s request. No candidate adopted; the fluidity objective remains open.
@@ -46,7 +50,7 @@ to an existing deployment was performed.
 make test
 make libretro-runtime-test
 make libretro-scale-test
-PYTHONDONTWRITEBYTECODE=1 python3 tests/test_task010_report.py
+PYTHONDONTWRITEBYTECODE=1 python3 tests/test_profile_report.py
 make docker-host-task010
 make deploy-task010
 make inspect INSPECT_BINARY=build/task010/kindle/inkboy-auto-4-60
@@ -122,7 +126,7 @@ and computes nearest-rank p95 without counting attempts or repeated summary
 samples. It recomputes rates from exact counts and elapsed time:
 
 ```sh
-python3 tools/task010_report.py build/task010-candidate-60s.log \
+python3 tools/profile_report.py build/task010-candidate-60s.log \
   --baseline build/task010-baseline-60s.log --target 4
 ```
 

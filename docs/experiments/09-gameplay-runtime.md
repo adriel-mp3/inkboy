@@ -1,5 +1,8 @@
 # TASK-009 — Gameplay runtime instrumentation and validation
 
+Archived experiment record. Its task-specific build and staging targets were
+removed; use the current profiling workflow in the root README for new runs.
+
 Date: 2026-10-16. Status: complete — implementation, local checks, Docker rebuild,
 matched PW5 profiling, physical shutdown and Power observation validated.
 The controlled results below are physical measurements; input-to-display latency

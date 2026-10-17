@@ -1,7 +1,10 @@
 # Stage 3 — Touch input research
 
-Status: the standalone `touch_probe` utility is implemented, compiles locally,
-and has been verified on the physical PW5. The user confirmed the corner
+Archived research record. The standalone `touch_probe` utility and its Make
+target were removed; the gameplay application now owns touchscreen input.
+
+Status: the standalone `touch_probe` utility was implemented, compiled locally,
+and verified on the physical PW5. The user confirmed the corner
 calibration, event handling, coexistence with the Kindle interface, and clean
 shutdown checks described below.
 
@@ -278,7 +281,8 @@ must still be tested for permissions and coexistence on the target.
 
 ## Minimal proof-of-concept plan
 
-The standalone POC is implemented as [`tools/touch_probe.c`](../../tools/touch_probe.c).
+The standalone POC was implemented in `tools/touch_probe.c` and has since been
+removed; gameplay input is implemented in `src/input.c`.
 It is separate from `src/main.c`, does not link FBInk or GTK, and uses only
 Linux input headers plus libc. The Makefile builds it as `build/touch_probe`
 for the Kindle target and `build/touch_probe-host` for a host smoke build.

@@ -1,5 +1,8 @@
 # TASK-002 — Investigate synchronous refresh blocking
 
+Historical task record. Its standalone live-probe build and deployment targets
+were removed after the gameplay integration superseded that probe.
+
 - Milestone: M4 — Rendering Performance Research
 - Status: Complete
 - Dependencies: TASK-001 completed baseline
