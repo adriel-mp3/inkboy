@@ -35,8 +35,14 @@ speed separately.
 - Keep the TASK-009 input enum, signal handling and ordered cleanup paths.
   SameBoy, audio negotiation, FBInk and Power behavior remain as validated.
 
-The default remains 1 FPS, full-screen, flashing AUTO until physical approval.
-No milestone or refresh decision is marked complete by implementation alone.
+The standard build now targets 2 FPS with regional GC16 updates and a
+60-second flashing AUTO cleanup, following the user's request to reduce
+repeated full-screen flashing and prioritize smoother presentation. Initial
+presentation, geometry changes and final restoration still refresh the full
+screen. Physical screening reached about 1.31 completed updates/s at the 2 FPS
+target; the actual cadence limit remains under investigation. The higher-cadence
+fluidity objective remains open; this policy change does not mark the milestone
+complete.
 
 ## Measurement and acceptance
 
@@ -103,5 +109,7 @@ started. No 8 FPS, three-pair confirmation or five-minute session was run.
 Thirty-second cleanup is host-tested but physically unverified. Candidate-specific
 EXIT, other signals and touchscreen-failure validation remain unperformed;
 TASK-009’s existing evidence is preserved and is not relabeled as TASK-010 proof.
-The default and milestone statuses remain unchanged. The fluidity objective is
-not complete. Detailed data and limitations are in the experiment report.
+The user subsequently selected 2 FPS regional GC16 as the standard policy, with
+a 60-second flashing AUTO cleanup. The measured device cadence and fluidity
+optimization remain open. The milestone is not complete. Detailed data and
+limitations are in the experiment report.

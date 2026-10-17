@@ -39,9 +39,12 @@ The main data flows are:
 - **Rendering:** frame conversion/scaling → screen composition → FBInk draw,
   refresh submission, and synchronous completion wait.
 
-The standard presentation policy is full-screen flashing AUTO at 1 FPS.
-Compile-time experimental profiles enable regional refresh settings; they do
-not change the standard build.
+The standard presentation policy targets 2 FPS with regional GC16 refreshes.
+The first frame and geometry changes refresh the full screen; ordinary updates
+refresh only the game rectangle without flashing. A flashing AUTO cleanup
+refreshes the game rectangle every 60 seconds. Shutdown restores the saved full
+screen. Compile-time profiles remain available for cadence and waveform
+experiments.
 
 ## Memory & Resources
 

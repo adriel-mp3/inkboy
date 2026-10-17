@@ -41,7 +41,8 @@ static inline struct inkboy_presentation_policy inkboy_presentation_policy(void)
         INKBOY_EXPERIMENT_MODE,
         UINT64_C(1000000000) * INKBOY_EXPERIMENT_CLEAN_SECONDS};
 #else
-    return (struct inkboy_presentation_policy){1U, INKBOY_REFRESH_FULL_FLASH, 0U};
+    return (struct inkboy_presentation_policy){2U, INKBOY_REFRESH_REGION_GC16,
+        UINT64_C(60000000000)};
 #endif
 }
 

@@ -10,7 +10,9 @@ at the user’s request. No candidate adopted; the fluidity objective remains op
 
 ## Implementation and preserved baseline
 
-The default remains full-screen flashing AUTO at 1 FPS. Experimental profiles
+The baseline at the time of these experiments was full-screen flashing AUTO at
+1 FPS. The standard build was subsequently changed to 2 FPS regional GC16 with
+a 60-second flashing cleanup at the user's request. Experimental profiles
 cache the complete initial composition and subsequently convert and nearest-scale
 the source into a compact YA game buffer. They draw and refresh only that region,
 using the actual FBInk rectangle so viewport origins stay FBInk's responsibility.
