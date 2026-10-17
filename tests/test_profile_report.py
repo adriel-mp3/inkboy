@@ -6,7 +6,7 @@ import tempfile
 import unittest
 
 spec = importlib.util.spec_from_file_location(
-    "task010_report", Path(__file__).resolve().parents[1] / "tools/task010_report.py")
+    "profile_report", Path(__file__).resolve().parents[1] / "tools/profile_report.py")
 report = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(report)
 

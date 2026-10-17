@@ -389,31 +389,6 @@ inkboy_renderer_present_frame(struct inkboy_renderer *renderer,
         if (inkboy_buffer_size(draw_width, draw_height, &buffer_size) != 0 ||
             build_screen(renderer, frame, &buffer) != 0) return INKBOY_PRESENT_ERROR;
     }
-#ifdef INKBOY_PROFILE_GAME_REGION
-    /* Keep TASK-009's flashing region diagnostic available independently. */
-    if (!experimental && !geometry_changed) {
-        timer = inkboy_profile_timer_start(INKBOY_PROFILE_REGION_PACK);
-        buffer_size = (size_t)game_rect.width * game_rect.height * 2U;
-        if (renderer->region_buffer_size < buffer_size) {
-            uint8_t *storage = realloc(renderer->region_buffer, buffer_size);
-            if (storage == NULL) return INKBOY_PRESENT_ERROR;
-            renderer->region_buffer = storage;
-            renderer->region_buffer_size = buffer_size;
-        }
-        for (uint32_t y = 0U; y < game_rect.height; y++) {
-            memcpy(renderer->region_buffer + (size_t)y * game_rect.width * 2U,
-                   buffer + ((size_t)(game_rect.y + y) * renderer->layout.width + game_rect.x) * 2U,
-                   (size_t)game_rect.width * 2U);
-        }
-        buffer = renderer->region_buffer;
-        draw_width = game_rect.width;
-        draw_height = game_rect.height;
-        draw_x = (short)game_rect.x;
-        draw_y = (short)game_rect.y;
-        full_screen = false;
-        inkboy_profile_timer_stop(timer);
-    }
-#endif
     if (!renderer->dump_saved) {
         result = fbink_dump(renderer->fbfd, &renderer->dump);
         if (result != 0) {

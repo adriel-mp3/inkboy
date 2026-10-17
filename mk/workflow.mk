@@ -15,8 +15,7 @@ $(foreach mode,auto gc16,$(foreach fps,1 2 4 8,$(foreach clean,30 60,$(eval PROF
 PROFILE_NAMES := baseline $(foreach mode,auto gc16,$(foreach fps,1 2 4 8,$(foreach clean,30 60,$(mode)-$(fps)-$(clean))))
 PROFILE_FLAGS := $(PROFILE_FLAGS_$(PROFILE))
 
-.PHONY: dev kindle package profile-artifact validate-profile validate-run-id docker-profile-artifact deploy run collect stop
-dev: host
+.PHONY: kindle package profile-artifact validate-profile validate-run-id docker-profile-artifact deploy run collect stop
 kindle: docker-build
 
 profile-artifact: validate-profile validate-run-id $(PROFILE_APP)

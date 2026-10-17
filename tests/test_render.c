@@ -176,11 +176,7 @@ int main(void)
     assert(inkboy_renderer_present_frame(renderer, &frame) == INKBOY_PRESENT_INITIAL);
     assert(inkboy_renderer_present_frame(renderer, &frame) == INKBOY_PRESENT_PARTIAL);
     assert(inkboy_profile_counter_value(INKBOY_PROFILE_PRESENTATIONS) == 2U && inkboy_profile_counter_value(INKBOY_PROFILE_REFRESH_FAILURES) == 0U);
-#ifdef INKBOY_PROFILE_GAME_REGION
-    assert(full_refreshes == 1U && region_refreshes == 1U);
-#else
     assert(full_refreshes == 2U && region_refreshes == 0U);
-#endif
     close_renderer(renderer, 0, "RWFC");
 
     renderer = open_renderer();
@@ -224,20 +220,6 @@ int main(void)
     close_error = -EIO;
     close_renderer(renderer, -1, "RWFC");
 
-#ifdef INKBOY_PROFILE_GAME_REGION
-    renderer = open_renderer();
-    assert(inkboy_renderer_present_frame(renderer, &frame) == 0);
-    struct inkboy_video_frame portrait = {pixels, 144U, 160U, 576U};
-    assert(inkboy_renderer_present_frame(renderer, &portrait) == INKBOY_PRESENT_INITIAL);
-    assert(full_refreshes == 2U && region_refreshes == 0U);
-    close_renderer(renderer, 0, "RWFC");
-
-    renderer = open_renderer();
-    assert(inkboy_renderer_present_frame(renderer, &frame) == 0);
-    empty_rect = true;
-    assert(inkboy_renderer_present_frame(renderer, &frame) < 0);
-    close_renderer(renderer, 0, "RWFC");
-#endif
     renderer = open_renderer();
     assert(inkboy_renderer_close(renderer) == 0);
     assert(restores == 0U && frees == 0U && closes == 1U);

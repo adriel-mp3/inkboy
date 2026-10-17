@@ -18,7 +18,6 @@ Usage:
   bin/deploy run RUN_ID
   bin/deploy stop RUN_ID
   bin/deploy collect RUN_ID
-  bin/deploy [--run|--probe]   (legacy build and deploy)
 EOF
 }
 
@@ -47,38 +46,9 @@ remote_run_dir() {
     printf '%s/runs/%s' "$REMOTE_ROOT" "$1"
 }
 
-legacy_deploy() {
-    local mode="${1:-}"
-    local local_bin="${PROJECT_ROOT}/build/inkboy"
-    local local_probe="${PROJECT_ROOT}/build/touch_probe"
-    local remote_dir="$REMOTE_ROOT"
-    require_commands make ssh scp timeout
-    [[ "$mode" == "" || "$mode" == "--run" || "$mode" == "--probe" ]] || { usage >&2; exit 2; }
-    printf '[1/4] Building Kindle executables\n'
-    make -C "$PROJECT_ROOT"
-    [[ -x "$local_bin" && -x "$local_probe" ]] || die "build did not produce expected executables"
-    printf '[2/4] Checking SSH connection to %s\n' "$SSH_ALIAS"
-    run_ssh true || die "could not connect to SSH host '$SSH_ALIAS'"
-    printf '[3/4] Deploying InkBoy and touch_probe\n'
-    run_ssh mkdir -p "$remote_dir"
-    run_scp "$local_bin" "$local_probe" "${SSH_ALIAS}:${remote_dir}/"
-    run_ssh chmod +x "$remote_dir/inkboy" "$remote_dir/touch_probe"
-    printf '[4/4] Deployment complete\n'
-    if [[ "$mode" == "--probe" ]]; then
-        run_ssh "$remote_dir/touch_probe"
-    elif [[ "$mode" == "--run" ]]; then
-        run_ssh "$remote_dir/inkboy"
-    fi
-}
-
 main() {
     local action="${1:-}"
     if [[ "$action" == "--help" || "$action" == "-h" ]]; then usage; return 0; fi
-    if [[ "$action" == "" || "$action" == "--run" || "$action" == "--probe" ]]; then
-        legacy_deploy "$action"
-        return
-    fi
-
     [[ $# == 2 ]] || { usage >&2; exit 2; }
     local run_id="$2"
     valid_run_id "$run_id" || die "invalid run id: $run_id"

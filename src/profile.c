@@ -225,7 +225,7 @@ void inkboy_profile_report(const char *event, const char *reason, int status)
 {
     static const char *const names[] = {
         "emulation", "input_poll", "input_gap", "callback_copy", "convert", "scale",
-        "compose", "region_pack", "fbink_draw", "refresh_submit", "refresh_wait",
+        "compose", "fbink_draw", "refresh_submit", "refresh_wait",
         "input_to_state", "initial_submit", "initial_wait", "clean_submit",
         "clean_wait", "input_gap_clean", "restore", "restore_wait"
     };

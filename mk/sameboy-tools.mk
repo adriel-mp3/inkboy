@@ -22,41 +22,6 @@ $(SAMEBOY_CORE_KINDLE):
 	@mkdir -p $(dir $@)
 	cp $(SAMEBOY_WORK_KINDLE)/sameboy_libretro.so $@
 
-$(LIBRETRO_PROBE_HOST): $(LIBRETRO_PROBE_SOURCE) $(SAMEBOY_CORE_HOST)
-	@mkdir -p $(BUILD_DIR)
-	$(HOST_CC) $(COMMON_CFLAGS) -I$(SAMEBOY_DIR)/libretro $< -ldl -o $@
-
-$(LIBRETRO_PROBE_KINDLE): $(LIBRETRO_PROBE_SOURCE) $(SAMEBOY_CORE_KINDLE)
-	@mkdir -p $(BUILD_DIR)
-	$(KINDLE_CC) $(COMMON_CFLAGS) -I$(SAMEBOY_DIR)/libretro $< -ldl -o $@
-
-libretro-probe-host: $(LIBRETRO_PROBE_HOST)
-libretro-probe-kindle: $(LIBRETRO_PROBE_KINDLE)
-
-$(LIBRETRO_FRAME_HOST): $(LIBRETRO_FRAME_SOURCE) $(SAMEBOY_CORE_HOST) build/libfbink-host.a
-	@mkdir -p $(BUILD_DIR)
-	$(HOST_CC) $(COMMON_CFLAGS) -D_POSIX_C_SOURCE=200809L \
-		-I$(SAMEBOY_DIR)/libretro -I$(FBINK_DIR) $< build/libfbink-host.a -ldl -lm -o $@
-
-$(LIBRETRO_FRAME_KINDLE): $(LIBRETRO_FRAME_SOURCE) $(SAMEBOY_CORE_KINDLE) build/libfbink-kindle.a
-	@mkdir -p $(BUILD_DIR)
-	$(KINDLE_CC) $(COMMON_CFLAGS) -D_POSIX_C_SOURCE=200809L \
-		-I$(SAMEBOY_DIR)/libretro -I$(FBINK_DIR) $< build/libfbink-kindle.a -ldl -lm -o $@
-
-libretro-frame-host: $(LIBRETRO_FRAME_HOST)
-libretro-frame-kindle: $(LIBRETRO_FRAME_KINDLE)
-
-$(LIBRETRO_LIVE_HOST): $(LIBRETRO_LIVE_SOURCE) $(SAMEBOY_CORE_HOST) build/libfbink-host.a
-	@mkdir -p $(BUILD_DIR)
-	$(HOST_CC) $(COMMON_CFLAGS) -D_POSIX_C_SOURCE=200809L -I$(SAMEBOY_DIR)/libretro -I$(FBINK_DIR) $< build/libfbink-host.a -ldl -lm -o $@
-
-$(LIBRETRO_LIVE_KINDLE): $(LIBRETRO_LIVE_SOURCE) $(SAMEBOY_CORE_KINDLE) build/libfbink-kindle.a
-	@mkdir -p $(BUILD_DIR)
-	$(KINDLE_CC) $(COMMON_CFLAGS) -D_POSIX_C_SOURCE=200809L -I$(SAMEBOY_DIR)/libretro -I$(FBINK_DIR) $< build/libfbink-kindle.a -ldl -lm -o $@
-
-libretro-live-host: $(LIBRETRO_LIVE_HOST)
-libretro-live-kindle: $(LIBRETRO_LIVE_KINDLE)
-
 $(LIBRETRO_SCALE_TEST): $(LIBRETRO_SCALE_TEST_SOURCE) $(LIBRETRO_LIVE_SOURCE) build/libfbink-host.a
 	@mkdir -p $(BUILD_DIR)
 	$(HOST_CC) $(COMMON_CFLAGS) -D_POSIX_C_SOURCE=200809L \
@@ -64,17 +29,3 @@ $(LIBRETRO_SCALE_TEST): $(LIBRETRO_SCALE_TEST_SOURCE) $(LIBRETRO_LIVE_SOURCE) bu
 
 libretro-scale-test: $(LIBRETRO_SCALE_TEST)
 	@$(LIBRETRO_SCALE_TEST)
-
-deploy-libretro-probe: libretro-probe-kindle
-	@mkdir -p build/libretro-probe-deploy
-	cp $(LIBRETRO_PROBE_KINDLE) $(SAMEBOY_CORE_KINDLE) build/libretro-probe-deploy/
-
-deploy-libretro-frame: libretro-frame-kindle
-	@mkdir -p build/libretro-frame-deploy
-	cp $(LIBRETRO_FRAME_KINDLE) $(SAMEBOY_CORE_KINDLE) build/libretro-frame-deploy/
-
-deploy-libretro-live: libretro-live-kindle
-	@mkdir -p build/libretro-live-deploy
-	cp $(LIBRETRO_LIVE_KINDLE) $(SAMEBOY_CORE_KINDLE) build/libretro-live-deploy/
-
-asset: $(ASSET_HEADER)

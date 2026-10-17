@@ -13,7 +13,7 @@
 #include <time.h>
 
 #ifndef INKBOY_CORE_PATH
-#define INKBOY_CORE_PATH "/mnt/us/inkboy/task008-gameplay/sameboy_libretro.so"
+#define INKBOY_CORE_PATH "/mnt/us/inkboy/sameboy_libretro.so"
 #endif
 #define INKBOY_ROM_PATH \
     "/mnt/us/games/Pokemon - Yellow Version - Special Pikachu Edition (USA, Europe) (GBC,SGB Enhanced).gb"

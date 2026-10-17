@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Summarize completed TASK-010 updates; never grant visual acceptance."""
+"""Summarize gameplay profile runs; never grant visual acceptance."""
 
 import argparse
 import json
