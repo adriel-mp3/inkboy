@@ -19,7 +19,8 @@
     "/mnt/us/games/Pokemon - Yellow Version - Special Pikachu Edition (USA, Europe) (GBC,SGB Enhanced).gb"
 #define WARMUP_FRAMES 180U
 
-static volatile sig_atomic_t stop_signal;
+static volatile sig_atomic_t shutdown_requested;
+static volatile sig_atomic_t shutdown_cause;
 static struct inkboy_profile_timer last_input_poll;
 static bool poll_after_cleanup;
 
@@ -41,7 +42,7 @@ enum warmup_result {
     WARMUP_ERROR = -1,
     WARMUP_READY = 0,
     WARMUP_EXIT_REQUESTED = 1,
-    WARMUP_SIGNAL_REQUESTED = 2
+    WARMUP_SHUTDOWN_REQUESTED = 2
 };
 
 static uint64_t monotonic_ns(const struct timespec *value)
@@ -50,17 +51,18 @@ static uint64_t monotonic_ns(const struct timespec *value)
            (uint64_t)value->tv_nsec;
 }
 
-static void request_stop(int signal_number)
+static void request_shutdown(int cause)
 {
-    stop_signal = signal_number;
+    shutdown_cause = cause;
+    shutdown_requested = 1;
 }
 
-static int install_signal_handlers(void)
+static int install_shutdown_handlers(void)
 {
     struct sigaction action;
 
     memset(&action, 0, sizeof(action));
-    action.sa_handler = request_stop;
+    action.sa_handler = request_shutdown;
     if (sigemptyset(&action.sa_mask) != 0 ||
         sigaction(SIGINT, &action, NULL) != 0 ||
         sigaction(SIGTERM, &action, NULL) != 0 ||
@@ -120,7 +122,7 @@ static void sleep_until(struct timespec deadline)
     struct timespec now;
     struct timespec remaining;
 
-    if (stop_signal || clock_gettime(CLOCK_MONOTONIC, &now) != 0 ||
+    if (shutdown_requested || clock_gettime(CLOCK_MONOTONIC, &now) != 0 ||
         !timespec_before(now, deadline)) {
         return;
     }
@@ -130,13 +132,13 @@ static void sleep_until(struct timespec deadline)
         remaining.tv_sec--;
         remaining.tv_nsec += 1000000000L;
     }
-    while (!stop_signal && nanosleep(&remaining, &remaining) != 0 && errno == EINTR) {
+    while (!shutdown_requested && nanosleep(&remaining, &remaining) != 0 && errno == EINTR) {
     }
 }
 
-static const char *signal_reason(void)
+static const char *shutdown_reason(void)
 {
-    switch (stop_signal) {
+    switch (shutdown_cause) {
     case SIGINT: return "SIGINT";
     case SIGTERM: return "SIGTERM";
     case SIGHUP: return "SIGHUP";
@@ -148,7 +150,7 @@ static int initialize_runtime(struct inkboy_runtime *runtime)
 {
     fprintf(stdout, "runtime core=%s rom=\"%s\" warmup_frames=%u\n",
             INKBOY_CORE_PATH, INKBOY_ROM_PATH, WARMUP_FRAMES);
-    if (install_signal_handlers() != 0) {
+    if (install_shutdown_handlers() != 0) {
         fprintf(stderr, "inkboy: unable to install signal handlers: %s\n",
                 strerror(errno));
         return -1;
@@ -171,7 +173,7 @@ static enum warmup_result warmup_runtime(struct inkboy_runtime *runtime,
     struct inkboy_video_frame frame;
 
     inkboy_profile_warmup();
-    for (unsigned index = 0U; index < WARMUP_FRAMES && !stop_signal; index++) {
+    for (unsigned index = 0U; index < WARMUP_FRAMES && !shutdown_requested; index++) {
         enum inkboy_input_result input_result = poll_input(runtime->input);
 
         if (input_result == INKBOY_INPUT_STOP) {
@@ -182,16 +184,16 @@ static enum warmup_result warmup_runtime(struct inkboy_runtime *runtime,
             *reason = "input-error";
             return WARMUP_ERROR;
         }
-        if (stop_signal) {
-            return WARMUP_SIGNAL_REQUESTED;
+        if (shutdown_requested) {
+            return WARMUP_SHUTDOWN_REQUESTED;
         }
         if (inkboy_libretro_run(runtime->emulator) != 0) {
             *reason = "emulation-error";
             return WARMUP_ERROR;
         }
     }
-    if (stop_signal) {
-        return WARMUP_SIGNAL_REQUESTED;
+    if (shutdown_requested) {
+        return WARMUP_SHUTDOWN_REQUESTED;
     }
 
     if (last_input_poll.id != 0U) {
@@ -267,7 +269,7 @@ static int run_gameplay(struct inkboy_runtime *runtime,
                         struct gameplay_clock *clock,
                         const char **reason)
 {
-    while (!stop_signal) {
+    while (!shutdown_requested) {
         struct timespec now;
         enum inkboy_input_result input_result = poll_input(runtime->input);
 
@@ -279,7 +281,7 @@ static int run_gameplay(struct inkboy_runtime *runtime,
             *reason = "input-error";
             return EXIT_FAILURE;
         }
-        if (stop_signal) {
+        if (shutdown_requested) {
             break;
         }
         if (inkboy_libretro_run(runtime->emulator) != 0) {
@@ -297,7 +299,7 @@ static int run_gameplay(struct inkboy_runtime *runtime,
         } else {
             sleep_until(clock->next_run);
         }
-        if (stop_signal) {
+        if (shutdown_requested) {
             break;
         }
         /* Sleep and synchronous presentation can both invalidate prior time. */
@@ -311,7 +313,7 @@ static int run_gameplay(struct inkboy_runtime *runtime,
             return EXIT_FAILURE;
         }
     }
-    *reason = signal_reason();
+    *reason = shutdown_reason();
     return EXIT_SUCCESS;
 }
 
@@ -329,7 +331,7 @@ static int close_runtime(struct inkboy_runtime *runtime, int result,
     }
     fprintf(stdout, "cleanup stage=renderer_end result=%d\n"
             "runtime event=final reason=%s signal=%d status=%d\n",
-            result, reason, (int)stop_signal, result);
+            result, reason, (int)shutdown_cause, result);
     fflush(stdout);
     return result;
 }
@@ -343,7 +345,8 @@ int main(void)
     const char *reason = "initialization-error";
     int result = EXIT_FAILURE;
 
-    stop_signal = 0;
+    shutdown_requested = 0;
+    shutdown_cause = 0;
     if (last_input_poll.id != 0U) inkboy_profile_timer_stop(last_input_poll);
     last_input_poll.id = 0U;
     poll_after_cleanup = false;
@@ -354,10 +357,10 @@ int main(void)
         if (warmup_result == WARMUP_READY) {
             result = run_gameplay(&runtime, &clock, &reason);
         } else if (warmup_result == WARMUP_EXIT_REQUESTED ||
-                   warmup_result == WARMUP_SIGNAL_REQUESTED) {
+                   warmup_result == WARMUP_SHUTDOWN_REQUESTED) {
             result = EXIT_SUCCESS;
-            if (warmup_result == WARMUP_SIGNAL_REQUESTED) {
-                reason = signal_reason();
+            if (warmup_result == WARMUP_SHUTDOWN_REQUESTED) {
+                reason = shutdown_reason();
             }
         }
     }
