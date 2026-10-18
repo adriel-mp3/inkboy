@@ -10,6 +10,7 @@ static void test_pixels(unsigned width, unsigned height, uint32_t screen_width,
 {
     struct inkboy_layout layout;
     struct inkboy_rect rect;
+    const uint32_t margin = INKBOY_LAYOUT_MARGIN_PIXELS;
     size_t pitch = ((size_t)width + 3U) * 4U;
     uint8_t *pixels = malloc(pitch * height);
     uint8_t *gray = malloc((size_t)width * height * 2U);
@@ -33,6 +34,9 @@ static void test_pixels(unsigned width, unsigned height, uint32_t screen_width,
     }
     struct inkboy_video_frame frame = {(const uint32_t *)pixels, width, height, pitch};
     assert(inkboy_frame_rect(&layout, &frame, &rect) == 0);
+    assert(rect.x >= margin && rect.y >= margin);
+    assert(rect.x + rect.width <= screen_width - margin);
+    assert(rect.y + rect.height <= screen_height - margin);
     assert(inkboy_frame_convert(&frame, gray, (size_t)width * height * 2U) == 0);
     assert(inkboy_frame_scale(gray, width, height, actual, screen_width, screen_height, &rect) == 0);
     /* TASK-008's original fused nearest sampling + grayscale reference. */

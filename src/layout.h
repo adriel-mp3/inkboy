@@ -5,6 +5,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#ifndef INKBOY_LAYOUT_MARGIN_PIXELS
+#define INKBOY_LAYOUT_MARGIN_PIXELS 40U
+#endif
+
 enum inkboy_control {
     INKBOY_CONTROL_NONE,
     INKBOY_CONTROL_EXIT,

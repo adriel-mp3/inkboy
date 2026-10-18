@@ -39,6 +39,12 @@ inkboy_buffer_size(uint32_t width, uint32_t height, size_t *size)
 int
 inkboy_layout_build(struct inkboy_layout *layout, uint32_t width, uint32_t height)
 {
+    const uint32_t margin = INKBOY_LAYOUT_MARGIN_PIXELS;
+    uint32_t content_width;
+    uint32_t content_height;
+    uint32_t content_right;
+    uint32_t content_bottom;
+
     if (layout == NULL) {
         return -1;
     }
@@ -46,16 +52,27 @@ inkboy_layout_build(struct inkboy_layout *layout, uint32_t width, uint32_t heigh
     memset(layout, 0, sizeof(*layout));
     layout->width = width;
     layout->height = height;
-    layout->header_bottom = percent_of(height, HEADER_SAFE_PERCENT);
-    layout->main_bottom = percent_of(height, 55U);
-    layout->primary_bottom = percent_of(height, 90U);
-    layout->exit.width = percent_of(width, EXIT_TOUCH_WIDTH_PERCENT);
-    layout->exit.height = percent_of(height, EXIT_TOUCH_HEIGHT_PERCENT);
-    layout->exit.x = width - percent_of(width, HEADER_SIDE_MARGIN_PERCENT) -
+    if (width == 0U || height == 0U ||
+        (uint64_t)margin * 2U >= width || (uint64_t)margin * 2U >= height) {
+        fprintf(stderr, "inkboy: screen is too small for the composition\n");
+        return -1;
+    }
+
+    content_width = width - margin * 2U;
+    content_height = height - margin * 2U;
+    content_right = width - margin;
+    content_bottom = height - margin;
+
+    layout->header_bottom = margin + percent_of(content_height, HEADER_SAFE_PERCENT);
+    layout->main_bottom = margin + percent_of(content_height, 55U);
+    layout->primary_bottom = margin + percent_of(content_height, 90U);
+    layout->exit.width = percent_of(content_width, EXIT_TOUCH_WIDTH_PERCENT);
+    layout->exit.height = percent_of(content_height, EXIT_TOUCH_HEIGHT_PERCENT);
+    layout->exit.x = content_right - percent_of(content_width, HEADER_SIDE_MARGIN_PERCENT) -
                      layout->exit.width;
     layout->exit.y = layout->header_bottom;
 
-    layout->viewport_size = percent_of(width, 38U);
+    layout->viewport_size = percent_of(content_width, 38U);
     if (layout->viewport_size > VIEWPORT_MAX_SIZE) {
         layout->viewport_size = VIEWPORT_MAX_SIZE;
     }
@@ -65,48 +82,74 @@ inkboy_layout_build(struct inkboy_layout *layout, uint32_t width, uint32_t heigh
     if (layout->viewport_size > percent_of(layout->main_bottom - layout->header_bottom, 70U)) {
         layout->viewport_size = percent_of(layout->main_bottom - layout->header_bottom, 70U);
     }
-    layout->viewport_x = (width - layout->viewport_size) / 2U;
+    layout->viewport_x = margin + (content_width - layout->viewport_size) / 2U;
     layout->viewport_y = layout->header_bottom +
                          (layout->main_bottom - layout->header_bottom - layout->viewport_size) / 2U;
 
-    layout->dpad.width = percent_of(width, 36U);
+    layout->dpad.width = percent_of(content_width, 36U);
     layout->dpad.height = layout->dpad.width;
-    layout->dpad.x = percent_of(width, 7U);
+    layout->dpad.x = margin + percent_of(content_width, 7U);
     layout->dpad.y = layout->main_bottom +
                      percent_of(layout->primary_bottom - layout->main_bottom, 22U);
     layout->dpad_arm = percent_of(layout->dpad.width, 34U);
 
-    layout->a.radius = percent_of(width, 15U) / 2U;
-    layout->a.center_x = percent_of(width, 79U);
+    layout->a.radius = percent_of(content_width, 15U) / 2U;
+    layout->a.center_x = margin + percent_of(content_width, 79U);
     layout->a.center_y = layout->main_bottom +
                          percent_of(layout->primary_bottom - layout->main_bottom, 36U);
     layout->b.radius = layout->a.radius;
-    layout->b.center_x = percent_of(width, 71U);
+    layout->b.center_x = margin + percent_of(content_width, 71U);
     layout->b.center_y = layout->main_bottom +
                          percent_of(layout->primary_bottom - layout->main_bottom, 70U);
 
-    layout->l.width = percent_of(width, 27U);
-    layout->l.height = percent_of(height, 6U);
-    layout->l.x = percent_of(width, 5U);
-    layout->l.y = layout->main_bottom + percent_of(height, 1U);
+    layout->l.width = percent_of(content_width, 27U);
+    layout->l.height = percent_of(content_height, 6U);
+    layout->l.x = margin + percent_of(content_width, 5U);
+    layout->l.y = layout->main_bottom + percent_of(content_height, 1U);
     layout->r = layout->l;
-    layout->r.x = width - percent_of(width, 5U) - layout->r.width;
+    layout->r.x = content_right - percent_of(content_width, 5U) - layout->r.width;
 
-    layout->select.width = percent_of(width, 20U);
-    layout->select.height = percent_of(height, 6U);
-    layout->select.x = percent_of(width, 29U);
-    layout->select.y = layout->primary_bottom + percent_of(height, 2U);
+    layout->select.width = percent_of(content_width, 20U);
+    layout->select.height = percent_of(content_height, 6U);
+    layout->select.x = margin + percent_of(content_width, 29U);
+    layout->select.y = layout->primary_bottom + percent_of(content_height, 2U);
     layout->start = layout->select;
-    layout->start.x = percent_of(width, 51U);
+    layout->start.x = margin + percent_of(content_width, 51U);
 
-    if (width == 0U || height == 0U ||
-        layout->viewport_size < VIEWPORT_MIN_SIZE ||
+    if (layout->viewport_size < VIEWPORT_MIN_SIZE ||
         layout->main_bottom <= layout->header_bottom ||
         layout->primary_bottom <= layout->main_bottom ||
-        layout->primary_bottom + percent_of(height, 10U) > height ||
-        layout->exit.x + layout->exit.width > width ||
+        layout->primary_bottom + percent_of(content_height, 10U) > content_bottom ||
+        layout->viewport_x < margin || layout->viewport_y < margin ||
+        layout->viewport_x + layout->viewport_size > content_right ||
+        layout->viewport_y + layout->viewport_size > content_bottom ||
+        layout->exit.x < margin || layout->exit.y < margin ||
+        layout->exit.x + layout->exit.width > content_right ||
+        layout->exit.y + layout->exit.height > content_bottom ||
+        layout->dpad.x < margin || layout->dpad.y < margin ||
+        layout->dpad.x + layout->dpad.width > content_right ||
+        layout->dpad.y + layout->dpad.height > content_bottom ||
+        layout->a.center_x < margin + layout->a.radius ||
+        layout->a.center_x + layout->a.radius > content_right ||
+        layout->a.center_y < margin + layout->a.radius ||
+        layout->a.center_y + layout->a.radius > content_bottom ||
+        layout->b.center_x < margin + layout->b.radius ||
+        layout->b.center_x + layout->b.radius > content_right ||
+        layout->b.center_y < margin + layout->b.radius ||
+        layout->b.center_y + layout->b.radius > content_bottom ||
+        layout->l.x < margin || layout->l.y < margin ||
+        layout->l.x + layout->l.width > content_right ||
+        layout->l.y + layout->l.height > content_bottom ||
+        layout->r.x < margin || layout->r.y < margin ||
+        layout->r.x + layout->r.width > content_right ||
+        layout->r.y + layout->r.height > content_bottom ||
+        layout->select.x < margin || layout->select.y < margin ||
+        layout->select.x + layout->select.width > content_right ||
+        layout->select.y + layout->select.height > content_bottom ||
+        layout->start.x < margin || layout->start.y < margin ||
+        layout->start.x + layout->start.width > content_right ||
+        layout->start.y + layout->start.height > content_bottom ||
         layout->dpad.y + layout->dpad.height > layout->primary_bottom ||
-        layout->r.x + layout->r.width > width ||
         layout->start.x + layout->start.width > width) {
         fprintf(stderr, "inkboy: screen is too small for the composition\n");
         return -1;
