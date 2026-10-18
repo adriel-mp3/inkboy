@@ -10,6 +10,7 @@ test: $(TEST_BINS)
 		if $$test_binary > "$$test_binary.log" 2>&1; then tail -n 1 "$$test_binary.log"; \
 		else cat "$$test_binary.log"; exit 1; fi; done
 	python3 tests/test_profile_report.py
+	python3 tests/test_deploy.py
 
 $(TEST_OUTPUT): $(TEST_SOURCE) src/layout.c src/layout.h
 	@mkdir -p $(BUILD_DIR)

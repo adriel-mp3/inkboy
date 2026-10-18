@@ -50,6 +50,7 @@ main() {
     local action="${1:-}"
     if [[ "$action" == "--help" || "$action" == "-h" ]]; then usage; return 0; fi
     [[ $# == 2 ]] || { usage >&2; exit 2; }
+    [[ "$REMOTE_ROOT" =~ ^/mnt/us/[a-zA-Z0-9._/-]+$ && "$REMOTE_ROOT" != *".."* ]] || die "invalid remote root: $REMOTE_ROOT"
     local run_id="$2"
     valid_run_id "$run_id" || die "invalid run id: $run_id"
     local remote_dir
@@ -59,13 +60,26 @@ main() {
 
     case "$action" in
         install)
-            require_commands ssh scp timeout
+            require_commands ssh scp timeout sed mktemp sha256sum
             [[ -x "$package_dir/inkboy" && -f "$package_dir/sameboy_libretro.so" && -f "$package_dir/MANIFEST" && -f "$package_dir/SHA256SUMS" ]] || die "package missing or incomplete: $package_dir"
             run_ssh true || die "could not connect to SSH host '$SSH_ALIAS'"
             run_ssh "test ! -e '$remote_dir' && mkdir -p '$REMOTE_ROOT/runs'" || die "run directory already exists or cannot be prepared: $remote_dir"
             run_scp -r "$package_dir" "${SSH_ALIAS}:${REMOTE_ROOT}/runs/"
             run_ssh "chmod +x '$remote_dir/inkboy' && cd '$remote_dir' && sha256sum -c SHA256SUMS"
-            printf 'Installed run %s at %s\n' "$run_id" "$remote_dir"
+            # Publish only a complete, verified script; failed installs keep the old shortcut.
+            local launcher_dir launcher_hash
+            launcher_dir="$(mktemp -d)"
+            trap "rm -rf -- '$launcher_dir'" EXIT
+            sed -e "s|@RUN_DIR@|$remote_dir|g" -e "s|@REMOTE_ROOT@|$REMOTE_ROOT|g" \
+                "$PROJECT_ROOT/bin/InkBoy.sh" > "$launcher_dir/InkBoy.sh"
+            sh -n "$launcher_dir/InkBoy.sh"
+            launcher_hash="$(sha256sum "$launcher_dir/InkBoy.sh")"
+            launcher_hash="${launcher_hash%% *}"
+            run_scp "$launcher_dir/InkBoy.sh" "${SSH_ALIAS}:${remote_dir}/library-launcher"
+            run_ssh "set -e; cd '$remote_dir'; printf '%s  library-launcher\\n' '$launcher_hash' | sha256sum -c -; sh -n library-launcher; command -v flock >/dev/null; test -d /mnt/us/documents; shortcut=\$(mktemp /mnt/us/documents/.inkboy-XXXXXX); trap 'rm -f -- \"\$shortcut\"' EXIT; cp library-launcher \"\$shortcut\"; chmod +x \"\$shortcut\"; mv -f \"\$shortcut\" /mnt/us/documents/InkBoy.sh"
+            rm -rf -- "$launcher_dir"
+            trap - EXIT
+            printf 'Installed run %s at %s; library shortcut updated\n' "$run_id" "$remote_dir"
             ;;
         run)
             require_commands ssh timeout

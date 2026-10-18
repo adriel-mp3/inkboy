@@ -50,8 +50,9 @@ The repository targets a Kindle Paperwhite 5 (11th generation) with firmware
 make deploy PROFILE=baseline
 ```
 
-It installs under `/mnt/us/inkboy/runs/<run-id>` and does not replace another
-run or modify the Kindle root filesystem.
+It installs under `/mnt/us/inkboy/runs/<run-id>`, verifies the package, then
+creates or updates **InkBoy** in the Kindle library to open that run. Existing
+runs are preserved and the Kindle root filesystem is not modified.
 
 ## Development and profiling workflow
 
@@ -66,7 +67,7 @@ make libretro-scale-test         # Scaler correctness/performance check
 make kindle                      # ARM build through Docker
 make inspect                     # Inspect the Kindle ELF
 make package PROFILE=gc16-2-60   # Build an isolated package and manifest
-make deploy PROFILE=gc16-2-60    # Build, package, and install on the PW5
+make deploy PROFILE=gc16-2-60    # Build, install, and update the library shortcut
 make run RUN_ID=generated-id    # Use the ID printed by make deploy
 make stop RUN_ID=generated-id   # Send SIGTERM and wait for cleanup
 make collect RUN_ID=generated-id # Copy its log and manifest to build/results/
@@ -88,12 +89,26 @@ Override either once in the environment when needed, for example
 `KINDLE_REMOTE_ROOT=/mnt/us/inkboy make deploy ...`. Installation fails if the
 run ID already exists on the device.
 
-The renderer can also be started manually through the device's homebrew/KPM
-mechanism:
+Every successful `make deploy` (or `bin/deploy install RUN_ID`) installs the
+library shortcut at `/mnt/us/documents/InkBoy.sh`. Open **InkBoy** in the Kindle
+library and use the on-screen **EXIT** control to leave the game. This requires
+the existing Hotfix [scriptlet support](https://kindlemodding.org/kindle-dev/scriptlets.html)
+and `flock` on the device; no KUAL extension is required.
 
-```sh
-/mnt/us/inkboy/inkboy
-```
+`bin/InkBoy.sh` is a template rendered by the deploy helper with the installed
+package path and configured remote root. Do not copy the template manually.
+The package stays at its original path because its core path is compiled in.
+After package and shortcut checksum verification, the helper replaces the
+library shortcut atomically. A failure before replacement preserves the previous
+shortcut; an already installed package may remain for diagnosis. A new deploy
+needs a fresh run ID. Updating the shortcut does not interrupt a running game;
+exit and reopen it to use the new version.
+
+The library launcher prevents duplicate library launches with a file lock and
+writes the latest session to `$KINDLE_REMOTE_ROOT/launcher.log` (by default
+`/mnt/us/inkboy/launcher.log`). SSH `run`, `stop`, and `collect` retain their
+separate per-run profiling workflow and logs; do not start an SSH run while a
+library session is open. Deployment selects a version but does not launch it.
 
 The gameplay build uses fixed core/ROM paths; it stops through EXIT, SIGINT,
 SIGTERM, SIGHUP or a runtime error and attempts framebuffer restoration. The
