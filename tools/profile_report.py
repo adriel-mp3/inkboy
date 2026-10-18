@@ -44,6 +44,12 @@ def summarize(path):
                           ("initial", "initial_presentations")):
         if len(waits[kind]) != int(summary[counter]):
             raise ValueError(f"{path}: incomplete completion samples")
+    traces = [fields(line) for line in lines if line.startswith("display event=trace ")]
+    for kind in waits:
+        trace_waits = [float(item["wait_ms"]) for item in traces
+                       if item.get("kind") == kind and "wait_ms" in item]
+        if trace_waits:
+            waits[kind] = trace_waits
     result = {"log": str(path)}
     for key in ("runs", "elapsed_s", "emu_fps", "normal_fps", "cleanup_fps", "cpu_pct", "rss_kib",
                 "peak_rss_kib", "refresh_attempts", "refresh_failures", "presentations",

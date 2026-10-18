@@ -70,8 +70,9 @@ make package PROFILE=gc16-2-60   # Build an isolated package and manifest
 make deploy PROFILE=gc16-2-60    # Build, install, and update the library shortcut
 make run RUN_ID=generated-id    # Use the ID printed by make deploy
 make stop RUN_ID=generated-id   # Send SIGTERM and wait for cleanup
-make collect RUN_ID=generated-id # Copy its log and manifest to build/results/
-python3 tools/profile_report.py build/results/generated-id/runtime.log
+make collect RUN_ID=generated-id # Copy the run into build/logs/
+make logs                       # Show a compact table for collected runs
+python3 tools/profile_report.py build/logs/generated-id.log
 ```
 
 `PROFILE` accepts `baseline`, or `auto|gc16` with FPS `1|2|4|8` and cleanup
@@ -109,6 +110,12 @@ writes the latest session to `$KINDLE_REMOTE_ROOT/launcher.log` (by default
 `/mnt/us/inkboy/launcher.log`). SSH `run`, `stop`, and `collect` retain their
 separate per-run profiling workflow and logs; do not start an SSH run while a
 library session is open. Deployment selects a version but does not launch it.
+
+Collected runtime logs use one flat directory, `build/logs/`: `<run-id>.log`
+contains the runtime output, while `<run-id>.manifest` and `<run-id>.sha256`
+retain its provenance. Use `make logs` for the compact human-readable view and
+`python3 tools/log_report.py --json` for machine-readable output. Historical
+logs may remain in their original locations until they are explicitly migrated.
 
 The gameplay build uses fixed core/ROM paths; it stops through EXIT, SIGINT,
 SIGTERM, SIGHUP or a runtime error and attempts framebuffer restoration. The

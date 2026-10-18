@@ -56,7 +56,7 @@ main() {
     local remote_dir
     remote_dir="$(remote_run_dir "$run_id")"
     local package_dir="${PROJECT_ROOT}/build/packages/${run_id}"
-    local result_dir="${PROJECT_ROOT}/build/results/${run_id}"
+    local log_dir="${PROJECT_ROOT}/build/logs"
 
     case "$action" in
         install)
@@ -93,10 +93,19 @@ main() {
             ;;
         collect)
             require_commands ssh timeout tar
-            mkdir -p "${PROJECT_ROOT}/build/results"
-            mkdir "$result_dir" || die "results already collected: $result_dir"
-            run_ssh "tar -C '$remote_dir' -cf - runtime.log MANIFEST SHA256SUMS" | tar -C "$result_dir" -xf -
-            printf 'Collected results in %s\n' "$result_dir"
+            mkdir -p "$log_dir"
+            [[ ! -e "$log_dir/${run_id}.log" ]] || die "log already collected: $log_dir/${run_id}.log"
+            local staging_dir
+            staging_dir="$(mktemp -d "$log_dir/.collect-XXXXXX")"
+            trap 'rm -rf -- "$staging_dir"' EXIT
+            run_ssh "tar -C '$remote_dir' -cf - runtime.log MANIFEST SHA256SUMS" |
+                tar -C "$staging_dir" -xf -
+            mv "$staging_dir/runtime.log" "$log_dir/${run_id}.log"
+            mv "$staging_dir/MANIFEST" "$log_dir/${run_id}.manifest"
+            mv "$staging_dir/SHA256SUMS" "$log_dir/${run_id}.sha256"
+            rm -rf -- "$staging_dir"
+            trap - EXIT
+            printf 'Collected log in %s\n' "$log_dir/${run_id}.log"
             ;;
         *) usage >&2; exit 2 ;;
     esac

@@ -51,8 +51,17 @@ fluxo atual do runtime estão em [`architecture.md`](architecture.md).
 - A negociação de 48 kHz permanece apenas uma opção experimental: melhora o
   custo de emulação, mas apresentou uma regressão repetível no tempo de refresh
   e na quantidade de atualizações do display.
-- O código do SameBoy não é modificado; o probe Libretro em `tools/` continua
-  sendo pesquisa isolada. A integração M5 usa seu próprio adapter em `src/`.
+- O adaptador Libretro vendorizado do SameBoy possui uma alteração específica
+  do InkBoy: quando não há áudio no produto, chama
+  `GB_set_sample_rate(..., 0)`. A variante é identificada como `SameBoy
+  1.0.5-inkboy`. A mudança evita gerar samples que seriam descartados e foi
+  validada no PW5: o tempo médio de `retro_run()` caiu de 27,784 ms para
+  11,858 ms, o FPS de emulação subiu de 33,5 para 55,2 e o uso de CPU caiu de
+  98,2% para 71,0%.
+- Essa alteração permanece pequena, isolada no adaptador e documentada como
+  divergência local do SameBoy vendorizado. Uma atualização futura do
+  submódulo deve reaplicar ou revisar essa decisão. O áudio só deve ser
+  reativado quando o InkBoy tiver uma saída de áudio real.
 
 ## Mudanças futuras
 
