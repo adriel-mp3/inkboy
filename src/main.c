@@ -92,6 +92,19 @@ static enum inkboy_input_result poll_input(struct inkboy_input *input)
     return result;
 }
 
+static enum inkboy_input_result process_game_input(struct inkboy_input *input,
+                                                   const char **reason)
+{
+    enum inkboy_input_result result = poll_input(input);
+
+    if (result == INKBOY_INPUT_STOP) {
+        *reason = "EXIT";
+    } else if (result == INKBOY_INPUT_ERROR) {
+        *reason = "input-error";
+    }
+    return result;
+}
+
 static void sleep_until(struct timespec deadline)
 {
     struct timespec now;
@@ -246,15 +259,12 @@ static int run_game_loop(struct inkboy_runtime *runtime,
 {
     while (!graceful_exit_requested) {
         struct timespec now;
-        enum inkboy_input_result input_result = poll_input(runtime->input);
+        enum inkboy_input_result input_result =
+            process_game_input(runtime->input, reason);
 
-        if (input_result == INKBOY_INPUT_STOP) {
-            *reason = "EXIT";
-            return EXIT_SUCCESS;
-        }
-        if (input_result == INKBOY_INPUT_ERROR) {
-            *reason = "input-error";
-            return EXIT_FAILURE;
+        if (input_result != INKBOY_INPUT_OK) {
+            return input_result == INKBOY_INPUT_STOP
+                ? EXIT_SUCCESS : EXIT_FAILURE;
         }
         if (graceful_exit_requested) {
             break;
