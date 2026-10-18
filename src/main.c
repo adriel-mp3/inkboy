@@ -4,6 +4,7 @@
 #include "libretro.h"
 #include "profile.h"
 #include "render.h"
+#include "timing.h"
 
 #include <errno.h>
 #include <signal.h>
@@ -45,12 +46,6 @@ enum warmup_result {
     WARMUP_SHUTDOWN_REQUESTED = 2
 };
 
-static uint64_t monotonic_ns(const struct timespec *value)
-{
-    return (uint64_t)value->tv_sec * UINT64_C(1000000000) +
-           (uint64_t)value->tv_nsec;
-}
-
 static void request_shutdown(int cause)
 {
     shutdown_cause = cause;
@@ -70,26 +65,6 @@ static int install_shutdown_handlers(void)
         return -1;
     }
     return 0;
-}
-
-static struct timespec add_seconds(struct timespec value, double seconds)
-{
-    time_t whole_seconds = (time_t)seconds;
-    long nanoseconds = (long)((seconds - (double)whole_seconds) * 1000000000.0);
-
-    value.tv_sec += whole_seconds;
-    value.tv_nsec += nanoseconds;
-    if (value.tv_nsec >= 1000000000L) {
-        value.tv_sec++;
-        value.tv_nsec -= 1000000000L;
-    }
-    return value;
-}
-
-static bool timespec_before(struct timespec left, struct timespec right)
-{
-    return left.tv_sec < right.tv_sec ||
-           (left.tv_sec == right.tv_sec && left.tv_nsec < right.tv_nsec);
 }
 
 static void handle_input_event(const struct inkboy_input_event *event,
@@ -123,7 +98,7 @@ static void sleep_until(struct timespec deadline)
     struct timespec remaining;
 
     if (shutdown_requested || clock_gettime(CLOCK_MONOTONIC, &now) != 0 ||
-        !timespec_before(now, deadline)) {
+        !inkboy_timespec_before(now, deadline)) {
         return;
     }
     remaining.tv_sec = deadline.tv_sec - now.tv_sec;
@@ -211,7 +186,7 @@ static enum warmup_result warmup_runtime(struct inkboy_runtime *runtime,
     if (clock_gettime(CLOCK_MONOTONIC, &clock->next_run) != 0) {
         return WARMUP_ERROR;
     }
-    clock->last_presentation_attempt = monotonic_ns(&clock->next_run);
+    clock->last_presentation_attempt = inkboy_timespec_to_ns(&clock->next_run);
     clock->emulation_fps = inkboy_libretro_fps(runtime->emulator);
     clock->next_display = clock->last_presentation_attempt + clock->display_period;
     last_input_poll.id = 0U;
@@ -225,7 +200,7 @@ static int present_latest_frame(struct inkboy_runtime *runtime,
                                 const char **reason)
 {
     struct inkboy_video_frame frame;
-    uint64_t present_start_ns = monotonic_ns(now);
+    uint64_t present_start_ns = inkboy_timespec_to_ns(now);
     uint64_t interval_ns = present_start_ns - clock->last_presentation_attempt;
     uint64_t deadline_late_ns = present_start_ns - clock->next_display;
     enum inkboy_present_result presented = INKBOY_PRESENT_UNCHANGED;
@@ -245,7 +220,7 @@ static int present_latest_frame(struct inkboy_runtime *runtime,
         *reason = "clock-error";
         return -1;
     }
-    now_ns = monotonic_ns(now);
+    now_ns = inkboy_timespec_to_ns(now);
     fprintf(stdout, "runtime event=presentation result=%s"
             " since_previous_attempt_ms=%.3f deadline_late_ms=%.3f"
             " presentation_call_ms=%.3f\n",
@@ -259,7 +234,7 @@ static int present_latest_frame(struct inkboy_runtime *runtime,
     clock->next_display = inkboy_next_deadline(clock->next_display, now_ns,
                                                 clock->display_period);
     /* Drop emulation debt too; no burst after a blocking refresh. */
-    if (timespec_before(*next_run, *now)) {
+    if (inkboy_timespec_before(*next_run, *now)) {
         *next_run = *now;
     }
     return 0;
@@ -288,13 +263,13 @@ static int run_gameplay(struct inkboy_runtime *runtime,
             *reason = "emulation-error";
             return EXIT_FAILURE;
         }
-        clock->next_run = add_seconds(clock->next_run,
-                                      1.0 / clock->emulation_fps);
+        clock->next_run = inkboy_timespec_add_seconds(
+            clock->next_run, 1.0 / clock->emulation_fps);
         if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) {
             *reason = "clock-error";
             return EXIT_FAILURE;
         }
-        if (timespec_before(clock->next_run, now)) {
+        if (inkboy_timespec_before(clock->next_run, now)) {
             clock->next_run = now;
         } else {
             sleep_until(clock->next_run);
@@ -307,7 +282,7 @@ static int run_gameplay(struct inkboy_runtime *runtime,
             *reason = "clock-error";
             return EXIT_FAILURE;
         }
-        if (monotonic_ns(&now) >= clock->next_display &&
+        if (inkboy_timespec_to_ns(&now) >= clock->next_display &&
             present_latest_frame(runtime, clock, &clock->next_run, &now,
                                  reason) != 0) {
             return EXIT_FAILURE;

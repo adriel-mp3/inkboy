@@ -17,7 +17,7 @@ KINDLE_SSH_ALIAS ?= kindle
 export KINDLE_REMOTE_ROOT KINDLE_SSH_ALIAS
 
 COMMON_CFLAGS := -std=c11 -Wall -Wextra -Wpedantic -O2
-APP_SOURCES   := src/main.c src/layout.c src/render.c src/draw.c src/input.c src/libretro.c src/frame.c src/profile.c
+APP_SOURCES   := src/main.c src/layout.c src/render.c src/draw.c src/input.c src/libretro.c src/frame.c src/profile.c src/timing.c
 APP_OBJECTS   := $(addprefix build/obj/$(TARGET)/,$(APP_SOURCES:src/%.c=%.o))
 TEST_SOURCE   := tests/test_layout.c
 TEST_OUTPUT   := build/test-layout

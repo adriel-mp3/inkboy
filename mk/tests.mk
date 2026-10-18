@@ -33,9 +33,9 @@ build/test-input: tests/test_input.c src/input.c src/input.h src/layout.c src/la
 	@mkdir -p $(BUILD_DIR)
 	$(HOST_CC) $(COMMON_CFLAGS) -D_POSIX_C_SOURCE=200809L -Isrc $< src/layout.c -o $@
 
-build/test-runtime: tests/test_runtime.c src/main.c src/profile.c $(wildcard src/*.h)
+build/test-runtime: tests/test_runtime.c src/main.c src/profile.c src/timing.c $(wildcard src/*.h)
 	@mkdir -p $(BUILD_DIR)
-	$(HOST_CC) $(COMMON_CFLAGS) -D_POSIX_C_SOURCE=200809L -Isrc $< src/profile.c -o $@
+	$(HOST_CC) $(COMMON_CFLAGS) -D_POSIX_C_SOURCE=200809L -Isrc $< src/profile.c src/timing.c -o $@
 
 build/test-frame: tests/test_frame.c src/frame.c src/frame.h src/layout.c src/layout.h
 	@mkdir -p $(BUILD_DIR)
