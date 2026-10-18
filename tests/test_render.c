@@ -8,13 +8,11 @@
 #include <stdlib.h>
 #include <string.h>
 
-#ifdef INKBOY_EXPERIMENT_FPS
-static uint64_t fake_now = UINT64_C(100000000000);
+static uint64_t fake_now = UINT64_C(1000000000);
 static uint64_t render_test_now(void) { return fake_now; }
 #define inkboy_profile_now render_test_now
 #include "../src/render.c"
 #undef inkboy_profile_now
-#endif
 
 static int draw_error;
 static int submit_error;
@@ -94,12 +92,8 @@ int fbink_refresh(int fd, uint32_t top, uint32_t left, uint32_t width,
 int fbink_refresh_rect(int fd, const FBInkRect *rect, const FBInkConfig *config)
 {
     assert(fd == 7);
-#ifdef INKBOY_EXPERIMENT_FPS
-    assert(config->wfm_mode == (config->is_flashing ||
-        INKBOY_EXPERIMENT_MODE == INKBOY_REFRESH_REGION_AUTO ? WFM_AUTO : WFM_GC16));
-#else
-    assert(config->wfm_mode == WFM_GC16 && !config->is_flashing);
-#endif
+    assert((config->wfm_mode == WFM_GC16 && !config->is_flashing) ||
+           (config->wfm_mode == WFM_AUTO && config->is_flashing));
     assert(memcmp(rect, &last_rect, sizeof(*rect)) == 0);
     assert(rect->left > 0U && rect->top > 8U);
     region_refreshes++;
@@ -143,6 +137,7 @@ static struct inkboy_renderer *open_renderer(void)
 {
     struct inkboy_renderer *renderer = NULL;
 
+    fake_now = UINT64_C(1000000000);
     draw_error = submit_error = wait_error = restore_error = close_error = 0;
     draws = full_refreshes = region_refreshes = restores = frees = closes = 0U;
     order_count = 0U;
@@ -166,80 +161,13 @@ static void close_renderer(struct inkboy_renderer *renderer, int expected,
     assert(restores == 1U && frees == 1U && closes == 1U);
 }
 
-#ifndef INKBOY_EXPERIMENT_FPS
-int main(void)
-{
-    static const uint32_t pixels[160U * 144U] = {0};
-    struct inkboy_video_frame frame = {pixels, 160U, 144U, 640U};
-    struct inkboy_renderer *renderer = open_renderer();
-    const struct inkboy_presentation_policy policy = inkboy_presentation_policy();
-
-    assert(policy.fps == 2U && policy.mode == INKBOY_REFRESH_REGION_GC16);
-    assert(policy.cleanup_ns == UINT64_C(60000000000));
-
-    assert(inkboy_renderer_present_frame(renderer, &frame) == INKBOY_PRESENT_INITIAL);
-    assert(inkboy_renderer_present_frame(renderer, &frame) == INKBOY_PRESENT_UNCHANGED);
-    assert(inkboy_profile_counter_value(INKBOY_PROFILE_PRESENTATIONS) == 1U && inkboy_profile_counter_value(INKBOY_PROFILE_REFRESH_FAILURES) == 0U);
-    assert(full_refreshes == 1U && region_refreshes == 0U);
-    close_renderer(renderer, 0, "RWFC");
-
-    renderer = open_renderer();
-    wait_interrupted = true;
-    assert(inkboy_renderer_present_frame(renderer, &frame) == 0);
-    assert(inkboy_profile_counter_value(INKBOY_PROFILE_REFRESH_FAILURES) == 0U);
-    wait_interrupted = true;
-    close_renderer(renderer, 0, "RWWFC");
-
-    renderer = open_renderer();
-    draw_error = -EIO;
-    assert(inkboy_renderer_present_frame(renderer, &frame) < 0);
-    assert(inkboy_profile_counter_value(INKBOY_PROFILE_REFRESH_ATTEMPTS) == 0U);
-    close_renderer(renderer, 0, "RWFC");
-
-    renderer = open_renderer();
-    submit_error = -EIO;
-    assert(inkboy_renderer_present_frame(renderer, &frame) < 0);
-    assert(inkboy_profile_counter_value(INKBOY_PROFILE_REFRESH_FAILURES) == 1U && inkboy_profile_counter_value(INKBOY_PROFILE_PRESENTATIONS) == 0U);
-    close_renderer(renderer, 0, "RWFC");
-
-    renderer = open_renderer();
-    wait_error = -EIO;
-    assert(inkboy_renderer_present_frame(renderer, &frame) < 0);
-    assert(inkboy_profile_counter_value(INKBOY_PROFILE_REFRESH_FAILURES) == 1U && inkboy_profile_counter_value(INKBOY_PROFILE_PRESENTATIONS) == 0U);
-    wait_error = 0;
-    close_renderer(renderer, 0, "WRWFC");
-
-    renderer = open_renderer();
-    assert(inkboy_renderer_present_frame(renderer, &frame) == 0);
-    restore_error = -EIO;
-    close_renderer(renderer, -1, "RFC");
-
-    renderer = open_renderer();
-    assert(inkboy_renderer_present_frame(renderer, &frame) == 0);
-    wait_error = -EIO;
-    close_renderer(renderer, -1, "RWFC");
-
-    renderer = open_renderer();
-    assert(inkboy_renderer_present_frame(renderer, &frame) == 0);
-    close_error = -EIO;
-    close_renderer(renderer, -1, "RWFC");
-
-    renderer = open_renderer();
-    assert(inkboy_renderer_close(renderer) == 0);
-    assert(restores == 0U && frees == 0U && closes == 1U);
-    assert(inkboy_renderer_close(NULL) == 0);
-    free(full_image);
-    puts("renderer: presentation/refresh/restore failures, geometry and cleanup pass");
-    return 0;
-}
-
-#else
 int main(void)
 {
     static uint32_t pixels[160U * 144U];
     struct inkboy_video_frame frame = {pixels, 160U, 144U, 640U};
     struct inkboy_renderer *renderer = open_renderer();
     const struct inkboy_presentation_policy policy = inkboy_presentation_policy();
+    assert(policy.fps == 2U && policy.cleanup_ns == UINT64_C(60000000000));
     assert(inkboy_renderer_present_frame(renderer, &frame) == INKBOY_PRESENT_INITIAL);
     assert(full_refreshes == 1U && renderer->refresh_config.is_flashing);
     assert(inkboy_renderer_present_frame(renderer, &frame) == INKBOY_PRESENT_UNCHANGED);
@@ -306,8 +234,55 @@ int main(void)
                 "WWRWFC" : failure == 2U ? "WRWFC" : "RWFC");
         }
     }
+
+    renderer = open_renderer();
+    wait_interrupted = true;
+    assert(inkboy_renderer_present_frame(renderer, &frame) == INKBOY_PRESENT_INITIAL);
+    assert(inkboy_profile_counter_value(INKBOY_PROFILE_REFRESH_FAILURES) == 0U);
+    wait_interrupted = true;
+    close_renderer(renderer, 0, "RWWFC");
+
+    renderer = open_renderer();
+    draw_error = -EIO;
+    assert(inkboy_renderer_present_frame(renderer, &frame) == INKBOY_PRESENT_ERROR);
+    assert(inkboy_profile_counter_value(INKBOY_PROFILE_REFRESH_ATTEMPTS) == 0U);
+    close_renderer(renderer, 0, "RWFC");
+
+    renderer = open_renderer();
+    submit_error = -EIO;
+    assert(inkboy_renderer_present_frame(renderer, &frame) == INKBOY_PRESENT_ERROR);
+    assert(inkboy_profile_counter_value(INKBOY_PROFILE_REFRESH_FAILURES) == 1U &&
+           inkboy_profile_counter_value(INKBOY_PROFILE_PRESENTATIONS) == 0U);
+    close_renderer(renderer, 0, "RWFC");
+
+    renderer = open_renderer();
+    wait_error = -EIO;
+    assert(inkboy_renderer_present_frame(renderer, &frame) == INKBOY_PRESENT_ERROR);
+    assert(inkboy_profile_counter_value(INKBOY_PROFILE_REFRESH_FAILURES) == 1U &&
+           inkboy_profile_counter_value(INKBOY_PROFILE_PRESENTATIONS) == 0U);
+    wait_error = 0;
+    close_renderer(renderer, 0, "WRWFC");
+
+    renderer = open_renderer();
+    assert(inkboy_renderer_present_frame(renderer, &frame) == INKBOY_PRESENT_INITIAL);
+    restore_error = -EIO;
+    close_renderer(renderer, -1, "RFC");
+
+    renderer = open_renderer();
+    assert(inkboy_renderer_present_frame(renderer, &frame) == INKBOY_PRESENT_INITIAL);
+    wait_error = -EIO;
+    close_renderer(renderer, -1, "RWFC");
+
+    renderer = open_renderer();
+    assert(inkboy_renderer_present_frame(renderer, &frame) == INKBOY_PRESENT_INITIAL);
+    close_error = -EIO;
+    close_renderer(renderer, -1, "RWFC");
+
+    renderer = open_renderer();
+    assert(inkboy_renderer_close(renderer) == 0);
+    assert(restores == 0U && frees == 0U && closes == 1U);
+    assert(inkboy_renderer_close(NULL) == 0);
     free(full_image);
     puts("presentation: waveform, grayscale cache, skip, cleanup, geometry and restoration pass");
     return 0;
 }
-#endif

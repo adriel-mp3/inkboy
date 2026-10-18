@@ -5,18 +5,20 @@
 InkBoy is a native C application for the Kindle Paperwhite 5. SameBoy runs the
 game through Libretro; Linux evdev provides touchscreen input; FBInk's public C
 API draws images and controls e-ink refreshes. The runtime is single-threaded,
-so input, emulation, and synchronous display updates follow one explicit
-sequence. InkBoy does not map the framebuffer or issue Kindle-specific display
-ioctls directly.
+so input, emulation, and display submissions follow one explicit sequence.
+Completion waits are deferred for ordinary regional updates and performed
+before full redraws, cleanups, and restoration. InkBoy does not map the
+framebuffer or issue Kindle-specific display ioctls directly.
 
 ## Components
 
 | Module | Responsibility |
 | --- | --- |
-| `src/main.c` | Lifecycle, signals, warmup, gameplay loop, and pacing |
+| `src/main.c`, `src/timing.c` | Lifecycle, signals, warmup, gameplay loop, and monotonic deadlines |
 | `src/input.c`, `src/layout.c` | Touchscreen events, screen geometry, and control mapping |
 | `src/libretro.c` | Load the core and ROM, connect callbacks, retain frames and controls |
 | `src/frame.c` | Validate, convert, and scale core video frames |
+| `src/draw.c` | Draw touchscreen controls into the composed image |
 | `src/render.c` | Compose the screen; draw, refresh, wait, and restore through FBInk |
 | `src/profile.c`, `src/presentation.h` | Runtime measurements and presentation policy |
 
@@ -36,15 +38,16 @@ The main data flows are:
 - **Input:** evdev touch events → layout/control mapping → Libretro joypad state.
 - **Emulation:** SameBoy produces XRGB8888 video → Libretro adapter retains the
   latest valid frame.
-- **Rendering:** frame conversion/scaling → screen composition → FBInk draw,
-  refresh submission, with completion waits deferred during ordinary gameplay.
+- **Rendering:** frame conversion/scaling and control drawing → screen
+  composition → FBInk draw and refresh submission, with completion waits
+  deferred during ordinary regional gameplay updates.
 
 The standard presentation policy targets 2 FPS with regional GC16 refreshes.
 The first frame and geometry changes refresh the full screen; ordinary updates
 refresh only the game rectangle without flashing. A flashing AUTO cleanup
 refreshes the game rectangle every 60 seconds. Shutdown restores the saved full
-screen. Compile-time profiles remain available for cadence and waveform
-experiments.
+screen. This is one fixed policy; cadence and waveform variants are not part of
+the production build.
 
 ## Memory & Resources
 

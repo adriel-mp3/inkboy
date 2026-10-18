@@ -30,9 +30,6 @@ SAMEBOY_CORE_HOST := build/sameboy/sameboy_libretro.so
 SAMEBOY_CORE_KINDLE := build/sameboy-kindle/sameboy_libretro.so
 SAMEBOY_WORK_HOST := build/sameboy-work-host
 SAMEBOY_WORK_KINDLE := build/sameboy-work-kindle
-LIBRETRO_LIVE_SOURCE := tools/libretro_live.c
-LIBRETRO_SCALE_TEST_SOURCE := tools/libretro_scale_test.c
-LIBRETRO_SCALE_TEST := build/libretro_scale-test
 FBINK_DIR     := third_party/fbink
 FBINK_VERSION := 886f25f
 FBINK_SOURCES := fbink.c cutef8/utf8.c cutef8/dfa.c qimagescale/qimagescale.c
@@ -56,4 +53,4 @@ $(DOCKER_ENV) $(DOCKER) run --rm --user "$$(id -u):$$(id -g)" \
 	$(IMAGE) make $(2)
 endef
 
-.PHONY: all docker-image bootstrap docker-build kindle host test sameboy-core-host sameboy-core-kindle libretro-runtime-test libretro-scale-test clean inspect
+.PHONY: all docker-image bootstrap docker-build kindle host test sameboy-core-host sameboy-core-kindle libretro-runtime-test clean inspect

@@ -29,12 +29,20 @@ def read_log(path):
     traces = [fields(line) for line in lines if line.startswith("display event=trace ")]
     for kind, key in (("normal", "wait_ms"), ("initial", "wait_ms"),
                       ("cleanup", "wait_ms")):
-        waits = [float(item[key]) for item in traces
-                 if item.get("kind") == kind and key in item]
+        waits = []
+        for item in traces:
+            if item.get("kind") != kind or key not in item:
+                continue
+            try:
+                waits.append(float(item[key]))
+            except ValueError:
+                # Older traces used "deferred" in wait_ms to mean no wait.
+                continue
         if waits:
             result[f"{kind}_wait_ms"] = sum(waits) / len(waits)
-    if any(item.get("kind") == "normal" and item.get("completion") == "deferred"
-           for item in traces):
+    if any(item.get("kind") == "normal" and
+           (item.get("completion") == "deferred" or
+            item.get("wait_ms") == "deferred") for item in traces):
         result["wait_mode"] = "deferred"
     else:
         result["wait_mode"] = "sync"

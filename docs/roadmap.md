@@ -47,4 +47,4 @@ that can be implemented, tested, and reviewed independently.
 - [`TASK-007 — Modularize Application`](tasks/TASK-007-modularize-application.md) — Complete; modular runtime physically validated through TASK-009.
 - [`TASK-008 — Play a Game Boy Game`](tasks/TASK-008-play-a-game-boy-game.md) — Complete; game/control response and shutdown physically validated through TASK-009.
 - [`TASK-009 — Profile and Stabilize PW5 Gameplay Runtime`](tasks/TASK-009-profile-and-stabilize-gameplay-runtime.md) — Complete; measured full/region comparisons and safe EXIT/signal/error cleanup; Power-to-exit explicitly unsupported.
-- [`TASK-010 — Reduce flashing and improve gameplay fluidity`](tasks/TASK-010-reduce-flashing-and-improve-fluidity.md) — In progress; regional AUTO/GC16 implemented and screened on PW5; no 2/4 FPS profile meets the polling limit. Default preserved; further tests stopped at the user’s request.
+- [`TASK-010 — Reduce flashing and improve gameplay fluidity`](tasks/TASK-010-reduce-flashing-and-improve-fluidity.md) — Closed at the user's direction; current default smoke-tested on PW5, but the original fluidity acceptance criteria remain unmet. M4 stays in progress.

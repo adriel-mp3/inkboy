@@ -8,7 +8,6 @@
 struct inkboy_renderer;
 
 int inkboy_renderer_open(struct inkboy_renderer **renderer_out);
-int inkboy_renderer_present(struct inkboy_renderer *renderer);
 enum inkboy_present_result inkboy_renderer_present_frame(struct inkboy_renderer *renderer,
                                   const struct inkboy_video_frame *frame);
 const struct inkboy_layout *inkboy_renderer_layout(

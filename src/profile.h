@@ -58,8 +58,11 @@ struct inkboy_profile_timer {
     uint64_t id;
 };
 
-enum inkboy_profile_frame_result { INKBOY_PROFILE_FRAME_VALID, INKBOY_PROFILE_FRAME_DUPLICATE,
-                                   INKBOY_PROFILE_FRAME_INVALID, INKBOY_PROFILE_FRAME_SUPERSEDED };
+enum inkboy_profile_frame_result {
+    INKBOY_PROFILE_FRAME_VALID,
+    INKBOY_PROFILE_FRAME_DUPLICATE,
+    INKBOY_PROFILE_FRAME_INVALID
+};
 enum inkboy_profile_presentation { INKBOY_PROFILE_PRESENT_INITIAL,
                                    INKBOY_PROFILE_PRESENT_NORMAL,
                                    INKBOY_PROFILE_PRESENT_CLEANUP };

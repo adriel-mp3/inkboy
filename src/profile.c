@@ -10,10 +10,7 @@
 
 struct inkboy_profile {
     struct inkboy_profile_sample stages[INKBOY_PROFILE_STAGE_COUNT];
-    uint64_t runs, callbacks, valid_frames, duplicate_frames, invalid_frames;
-    uint64_t superseded_frames, presentations, initial_presentations, normal_presentations;
-    uint64_t cleanups, unchanged_images, refresh_attempts, refresh_failures;
-    uint64_t initial_refresh_failures, normal_refresh_failures, cleanup_refresh_failures;
+    uint64_t counters[INKBOY_PROFILE_COUNTER_COUNT];
 };
 
 static struct inkboy_profile inkboy_profile;
@@ -32,25 +29,11 @@ static uint64_t started;
 static uint64_t previous_report;
 static double initial_cpu;
 
-static uint64_t *counter_address(enum inkboy_profile_counter counter)
-{
-    uint64_t *counters[] = {
-        &inkboy_profile.runs, &inkboy_profile.callbacks,
-        &inkboy_profile.valid_frames, &inkboy_profile.duplicate_frames,
-        &inkboy_profile.invalid_frames, &inkboy_profile.superseded_frames,
-        &inkboy_profile.presentations, &inkboy_profile.initial_presentations,
-        &inkboy_profile.normal_presentations, &inkboy_profile.cleanups,
-        &inkboy_profile.unchanged_images, &inkboy_profile.refresh_attempts,
-        &inkboy_profile.refresh_failures, &inkboy_profile.initial_refresh_failures,
-        &inkboy_profile.normal_refresh_failures, &inkboy_profile.cleanup_refresh_failures
-    };
-    return (unsigned)counter < INKBOY_PROFILE_COUNTER_COUNT ? counters[counter] : NULL;
-}
-
 static void inkboy_profile_count(enum inkboy_profile_counter counter)
 {
-    uint64_t *value = counter_address(counter);
-    if (value != NULL) (*value)++;
+    if ((unsigned)counter < INKBOY_PROFILE_COUNTER_COUNT) {
+        inkboy_profile.counters[counter]++;
+    }
 }
 
 void inkboy_profile_frame_received(enum inkboy_profile_frame_result result)
@@ -60,7 +43,6 @@ void inkboy_profile_frame_received(enum inkboy_profile_frame_result result)
     case INKBOY_PROFILE_FRAME_VALID: inkboy_profile_count(INKBOY_PROFILE_VALID_FRAMES); break;
     case INKBOY_PROFILE_FRAME_DUPLICATE: inkboy_profile_count(INKBOY_PROFILE_DUPLICATE_FRAMES); break;
     case INKBOY_PROFILE_FRAME_INVALID: inkboy_profile_count(INKBOY_PROFILE_INVALID_FRAMES); break;
-    case INKBOY_PROFILE_FRAME_SUPERSEDED: inkboy_profile_count(INKBOY_PROFILE_SUPERSEDED_FRAMES); break;
     }
 }
 
@@ -92,8 +74,8 @@ void inkboy_profile_frame_presented(enum inkboy_profile_presentation kind)
 
 uint64_t inkboy_profile_counter_value(enum inkboy_profile_counter counter)
 {
-    uint64_t *value = counter_address(counter);
-    return value != NULL ? *value : 0U;
+    return (unsigned)counter < INKBOY_PROFILE_COUNTER_COUNT
+        ? inkboy_profile.counters[counter] : 0U;
 }
 
 struct inkboy_profile_sample inkboy_profile_stage_value(enum inkboy_profile_stage stage)
@@ -221,20 +203,96 @@ void inkboy_profile_finish(const char *reason, int status)
     inkboy_profile_report("summary", reason, status);
 }
 
+static const char *const profile_stage_names[INKBOY_PROFILE_STAGE_COUNT] = {
+    [INKBOY_PROFILE_EMULATION] = "emulation",
+    [INKBOY_PROFILE_INPUT] = "input_poll",
+    [INKBOY_PROFILE_INPUT_GAP] = "input_gap",
+    [INKBOY_PROFILE_CALLBACK_COPY] = "callback_copy",
+    [INKBOY_PROFILE_CONVERT] = "convert",
+    [INKBOY_PROFILE_SCALE] = "scale",
+    [INKBOY_PROFILE_COMPOSE] = "compose",
+    [INKBOY_PROFILE_DRAW] = "fbink_draw",
+    [INKBOY_PROFILE_REFRESH_SUBMIT] = "refresh_submit",
+    [INKBOY_PROFILE_REFRESH_WAIT] = "refresh_wait",
+    [INKBOY_PROFILE_INPUT_TO_STATE] = "input_to_state",
+    [INKBOY_PROFILE_INITIAL_SUBMIT] = "initial_submit",
+    [INKBOY_PROFILE_INITIAL_WAIT] = "initial_wait",
+    [INKBOY_PROFILE_CLEAN_SUBMIT] = "clean_submit",
+    [INKBOY_PROFILE_CLEAN_WAIT] = "clean_wait",
+    [INKBOY_PROFILE_INPUT_GAP_CLEAN] = "input_gap_clean",
+    [INKBOY_PROFILE_RESTORE] = "restore",
+    [INKBOY_PROFILE_RESTORE_WAIT] = "restore_wait"
+};
+
+static void
+report_runtime_metrics(double elapsed, double cpu_percent,
+                       unsigned long rss_kib, long peak_rss_kib,
+                       const char *reason, int status)
+{
+    const uint64_t *counters = inkboy_profile.counters;
+    fprintf(stdout,
+            " runs=%" PRIu64 " callbacks=%" PRIu64 " valid_frames=%" PRIu64
+            " duplicate_frames=%" PRIu64 " invalid_frames=%" PRIu64
+            " superseded_frames=%" PRIu64 " presentations=%" PRIu64
+            " refresh_attempts=%" PRIu64 " refresh_failures=%" PRIu64
+            " emu_fps=%.3f display_fps=%.3f cpu_pct=%.3f"
+            " rss_kib=%lu peak_rss_kib=%ld reason=%s status=%d",
+            counters[INKBOY_PROFILE_RUNS],
+            counters[INKBOY_PROFILE_CALLBACKS],
+            counters[INKBOY_PROFILE_VALID_FRAMES],
+            counters[INKBOY_PROFILE_DUPLICATE_FRAMES],
+            counters[INKBOY_PROFILE_INVALID_FRAMES],
+            counters[INKBOY_PROFILE_SUPERSEDED_FRAMES],
+            counters[INKBOY_PROFILE_PRESENTATIONS],
+            counters[INKBOY_PROFILE_REFRESH_ATTEMPTS],
+            counters[INKBOY_PROFILE_REFRESH_FAILURES],
+            elapsed > 0.0 ? counters[INKBOY_PROFILE_RUNS] / elapsed : 0.0,
+            elapsed > 0.0
+                ? counters[INKBOY_PROFILE_PRESENTATIONS] / elapsed : 0.0,
+            cpu_percent, rss_kib, peak_rss_kib, reason, status);
+    fprintf(stdout, " initial_presentations=%" PRIu64 " normal_presentations=%" PRIu64
+            " cleanups=%" PRIu64 " unchanged_images=%" PRIu64
+            " initial_refresh_failures=%" PRIu64 " normal_refresh_failures=%" PRIu64
+            " cleanup_refresh_failures=%" PRIu64 " normal_fps=%.3f cleanup_fps=%.3f",
+            counters[INKBOY_PROFILE_INITIAL_PRESENTATIONS],
+            counters[INKBOY_PROFILE_NORMAL_PRESENTATIONS],
+            counters[INKBOY_PROFILE_CLEANUPS],
+            counters[INKBOY_PROFILE_UNCHANGED_IMAGES],
+            counters[INKBOY_PROFILE_INITIAL_REFRESH_FAILURES],
+            counters[INKBOY_PROFILE_NORMAL_REFRESH_FAILURES],
+            counters[INKBOY_PROFILE_CLEANUP_REFRESH_FAILURES],
+            elapsed > 0.0
+                ? counters[INKBOY_PROFILE_NORMAL_PRESENTATIONS] / elapsed : 0.0,
+            elapsed > 0.0 ? counters[INKBOY_PROFILE_CLEANUPS] / elapsed : 0.0);
+}
+
+static void
+report_stage_metrics(void)
+{
+    for (unsigned index = 0U; index < INKBOY_PROFILE_STAGE_COUNT; index++) {
+        const struct inkboy_profile_sample *sample = &inkboy_profile.stages[index];
+
+        fprintf(stdout, " %s_count=%" PRIu64 " %s_total_ms=%.3f"
+                " %s_avg_ms=%.3f %s_max_ms=%.3f %s_last_ms=%.3f",
+                profile_stage_names[index], sample->count,
+                profile_stage_names[index], sample->total_ns / 1000000.0,
+                profile_stage_names[index],
+                sample->count > 0U
+                    ? sample->total_ns / 1000000.0 / sample->count : 0.0,
+                profile_stage_names[index], sample->max_ns / 1000000.0,
+                profile_stage_names[index], sample->last_ns / 1000000.0);
+    }
+}
+
 void inkboy_profile_report(const char *event, const char *reason, int status)
 {
-    static const char *const names[] = {
-        "emulation", "input_poll", "input_gap", "callback_copy", "convert", "scale",
-        "compose", "fbink_draw", "refresh_submit", "refresh_wait",
-        "input_to_state", "initial_submit", "initial_wait", "clean_submit",
-        "clean_wait", "input_gap_clean", "restore", "restore_wait"
-    };
     struct rusage usage = {0};
     struct timespec utc = {0};
     uint64_t now = inkboy_profile_now();
     double elapsed = now >= started ? (now - started) / 1000000000.0 : 0.0;
     double interval = now >= previous_report
                           ? (now - previous_report) / 1000000.0 : 0.0;
+    double cpu_percent;
     unsigned long rss_kib = 0UL;
     FILE *status_file;
     char line[160];
@@ -250,46 +308,16 @@ void inkboy_profile_report(const char *event, const char *reason, int status)
         }
         fclose(status_file);
     }
+    cpu_percent = elapsed > 0.0
+        ? (cpu_seconds(&usage) - initial_cpu) * 100.0 / elapsed : 0.0;
     fprintf(stdout,
             "profile event=%s phase=%s utc_s=%lld.%09ld monotonic_ns=%" PRIu64
-            " elapsed_s=%.6f interval_ms=%.3f runs=%" PRIu64
-            " callbacks=%" PRIu64 " valid_frames=%" PRIu64
-            " duplicate_frames=%" PRIu64 " invalid_frames=%" PRIu64
-            " superseded_frames=%" PRIu64 " presentations=%" PRIu64
-            " refresh_attempts=%" PRIu64 " refresh_failures=%" PRIu64
-            " emu_fps=%.3f display_fps=%.3f cpu_pct=%.3f"
-            " rss_kib=%lu peak_rss_kib=%ld reason=%s status=%d",
+            " elapsed_s=%.6f interval_ms=%.3f",
             event, phase_name, (long long)utc.tv_sec, utc.tv_nsec, now,
-            elapsed, interval, inkboy_profile.runs, inkboy_profile.callbacks,
-            inkboy_profile.valid_frames, inkboy_profile.duplicate_frames,
-            inkboy_profile.invalid_frames, inkboy_profile.superseded_frames,
-            inkboy_profile.presentations, inkboy_profile.refresh_attempts,
-            inkboy_profile.refresh_failures,
-            elapsed > 0.0 ? inkboy_profile.runs / elapsed : 0.0,
-            elapsed > 0.0 ? inkboy_profile.presentations / elapsed : 0.0,
-            elapsed > 0.0 ? (cpu_seconds(&usage) - initial_cpu) * 100.0 / elapsed : 0.0,
-            rss_kib, usage.ru_maxrss, reason, status);
-    fprintf(stdout, " initial_presentations=%" PRIu64 " normal_presentations=%" PRIu64
-            " cleanups=%" PRIu64 " unchanged_images=%" PRIu64
-            " initial_refresh_failures=%" PRIu64 " normal_refresh_failures=%" PRIu64
-            " cleanup_refresh_failures=%" PRIu64 " normal_fps=%.3f cleanup_fps=%.3f",
-            inkboy_profile.initial_presentations, inkboy_profile.normal_presentations,
-            inkboy_profile.cleanups, inkboy_profile.unchanged_images,
-            inkboy_profile.initial_refresh_failures, inkboy_profile.normal_refresh_failures,
-            inkboy_profile.cleanup_refresh_failures,
-            elapsed > 0.0 ? inkboy_profile.normal_presentations / elapsed : 0.0,
-            elapsed > 0.0 ? inkboy_profile.cleanups / elapsed : 0.0);
-    for (unsigned index = 0U; index < INKBOY_PROFILE_STAGE_COUNT; index++) {
-        const struct inkboy_profile_sample *sample = &inkboy_profile.stages[index];
-
-        fprintf(stdout, " %s_count=%" PRIu64 " %s_total_ms=%.3f"
-                " %s_avg_ms=%.3f %s_max_ms=%.3f %s_last_ms=%.3f", names[index], sample->count,
-                names[index], sample->total_ns / 1000000.0, names[index],
-                sample->count > 0U
-                    ? sample->total_ns / 1000000.0 / sample->count : 0.0,
-                names[index], sample->max_ns / 1000000.0,
-                names[index], sample->last_ns / 1000000.0);
-    }
+            elapsed, interval);
+    report_runtime_metrics(elapsed, cpu_percent, rss_kib,
+                           usage.ru_maxrss, reason, status);
+    report_stage_metrics();
     fputc('\n', stdout);
     fflush(stdout);
     previous_report = now;

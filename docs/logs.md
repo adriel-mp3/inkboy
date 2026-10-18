@@ -5,7 +5,7 @@ Each collected device run uses the same run ID for three flat files:
 
 ```text
 build/logs/<run-id>.log       runtime output
-build/logs/<run-id>.manifest  binary, profile and source provenance
+build/logs/<run-id>.manifest  binary, policy and source provenance
 build/logs/<run-id>.sha256    package checksums
 ```
 
@@ -45,11 +45,10 @@ The log sources are:
   cleanup; `src/input.c` records touchscreen cleanup.
 - `make test` writes host test output beside each test binary under `build/`.
   Those files are validation logs, not gameplay measurements.
-- `tools/libretro_live.c` is an archived standalone probe. Its historical
-  logs remain useful for the continuous-rendering and 48 kHz investigations,
-  but it is not the current gameplay runtime collection path.
+- Historical probe logs remain useful for the continuous-rendering and 48 kHz
+  investigations, but their standalone probe source has been removed.
 
 For a first pass, use `make logs` and select only runs with status `0`,
-`restore=yes`, and `fail=0`. Compare runs with the same ROM, binary, profile,
+`restore=yes`, and `fail=0`. Compare runs with the same ROM, binary, policy,
 duration and device conditions. Partial smoke logs remain visible so an
 incomplete cleanup is not silently mistaken for a successful run.

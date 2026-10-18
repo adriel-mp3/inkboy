@@ -29,15 +29,19 @@ fluxo atual do runtime estão em [`architecture.md`](architecture.md).
 
 - A aplicação não acessa `/dev/fb0` nem emite ioctls específicos do Kindle
   diretamente; usa a API pública do FBInk.
-- O fluxo salva o framebuffer anterior, desenha uma imagem estável, faz um
-  refresh explícito e síncrono, e restaura o estado anterior em uma saída
-  normal.
+- O fluxo salva o framebuffer anterior e restaura o estado em uma saída normal.
+  A apresentação inicial, os redesenhos completos, as limpezas e a restauração
+  aguardam a conclusão do refresh; atualizações regionais comuns submetem o
+  refresh e adiam essa espera até o próximo redesenho completo, limpeza ou saída.
 - O deployment fica em `/mnt/us/inkboy`; o root filesystem do Kindle não é
   alterado.
 - A arquitetura Stage 2 permanece single-threaded e sem loop de animação.
-- O runtime M5 também é single-threaded, com apresentação full-screen a 1 FPS,
-  AUTO flashing e espera síncrona. A TASK-009 mantém essa política; seu build
-  de região de jogo é experimental e separado do executável padrão.
+- O runtime M5 é single-threaded. O padrão atual é 2 FPS com atualizações
+  regionais GC16 e uma limpeza AUTO com flash a cada 60 segundos. Essa política
+  foi escolhida depois do estudo TASK-010, embora os perfis de 2 FPS não tenham
+  passado os critérios de aceitação medidos naquele estudo; a matriz física
+  completa para o padrão atual continua pendente. A espera das atualizações
+  regionais comuns é adiada até antes de uma limpeza ou atualização completa.
 
 ## Assets e licenças
 
@@ -46,8 +50,10 @@ fluxo atual do runtime estão em [`architecture.md`](architecture.md).
 
 ## Decisões de pesquisa atuais
 
-- `WFM_AUTO`, smooth scaling, limite de 1 FPS e espera síncrona são preservados
-  enquanto o comportamento do PW5 continua sendo medido.
+- `WFM_AUTO` continua sendo usado nas limpezas e restauração. Smooth scaling
+  foi avaliado no probe de pesquisa removido; o runtime de gameplay usa
+  nearest-neighbor. A negociação de 48 kHz também continua experimental. O
+  comportamento de atualização no PW5 segue sendo medido.
 - A negociação de 48 kHz permanece apenas uma opção experimental: melhora o
   custo de emulação, mas apresentou uma regressão repetível no tempo de refresh
   e na quantidade de atualizações do display.

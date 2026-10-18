@@ -22,8 +22,9 @@
 
 static volatile sig_atomic_t graceful_exit_requested;
 static volatile sig_atomic_t exit_signal_number;
-static struct inkboy_profile_timer last_input_poll;
-static bool poll_after_cleanup;
+/* Track time between input polls, attributing cleanup waits separately. */
+static struct inkboy_profile_timer input_gap_timer;
+static bool classify_next_input_gap_as_cleanup;
 
 struct inkboy_runtime {
     struct inkboy_renderer *renderer;
@@ -32,18 +33,17 @@ struct inkboy_runtime {
 };
 
 struct gameplay_clock {
-    struct timespec next_run;
-    uint64_t next_display;
-    uint64_t last_presentation_attempt;
-    uint64_t display_period;
+    struct timespec next_emulation_run; /* Absolute CLOCK_MONOTONIC deadline. */
+    uint64_t next_display_ns; /* Absolute CLOCK_MONOTONIC time in nanoseconds. */
+    uint64_t last_presentation_attempt_ns;
+    uint64_t display_period_ns;
     double emulation_fps;
 };
 
 enum warmup_result {
     WARMUP_ERROR = -1,
     WARMUP_READY = 0,
-    WARMUP_EXIT_REQUESTED = 1,
-    WARMUP_GRACEFUL_EXIT_REQUESTED = 2
+    WARMUP_STOP_REQUESTED = 1
 };
 
 static void request_graceful_exit(int cause)
@@ -80,12 +80,14 @@ static enum inkboy_input_result poll_input(struct inkboy_input *input)
 {
     struct inkboy_profile_timer input_timer =
         inkboy_profile_timer_start(INKBOY_PROFILE_INPUT);
-    if (last_input_poll.id != 0U) {
-        inkboy_profile_timer_stop_as(last_input_poll, poll_after_cleanup ?
-            INKBOY_PROFILE_INPUT_GAP_CLEAN : INKBOY_PROFILE_INPUT_GAP);
+    if (input_gap_timer.id != 0U) {
+        enum inkboy_profile_stage stage = classify_next_input_gap_as_cleanup
+            ? INKBOY_PROFILE_INPUT_GAP_CLEAN : INKBOY_PROFILE_INPUT_GAP;
+
+        inkboy_profile_timer_stop_as(input_gap_timer, stage);
     }
-    last_input_poll = inkboy_profile_timer_start(INKBOY_PROFILE_INPUT_GAP);
-    poll_after_cleanup = false;
+    input_gap_timer = inkboy_profile_timer_start(INKBOY_PROFILE_INPUT_GAP);
+    classify_next_input_gap_as_cleanup = false;
     enum inkboy_input_result result = inkboy_input_poll(input);
 
     inkboy_profile_timer_stop(input_timer);
@@ -162,18 +164,18 @@ static enum warmup_result warmup_runtime(struct inkboy_runtime *runtime,
 
     inkboy_profile_warmup();
     for (unsigned index = 0U; index < WARMUP_FRAMES && !graceful_exit_requested; index++) {
-        enum inkboy_input_result input_result = poll_input(runtime->input);
+        enum inkboy_input_result input_result =
+            process_game_input(runtime->input, reason);
 
         if (input_result == INKBOY_INPUT_STOP) {
-            *reason = "EXIT";
-            return WARMUP_EXIT_REQUESTED;
+            return WARMUP_STOP_REQUESTED;
         }
         if (input_result == INKBOY_INPUT_ERROR) {
-            *reason = "input-error";
             return WARMUP_ERROR;
         }
         if (graceful_exit_requested) {
-            return WARMUP_GRACEFUL_EXIT_REQUESTED;
+            *reason = graceful_exit_reason();
+            return WARMUP_STOP_REQUESTED;
         }
         if (inkboy_libretro_run(runtime->emulator) != 0) {
             *reason = "emulation-error";
@@ -181,13 +183,14 @@ static enum warmup_result warmup_runtime(struct inkboy_runtime *runtime,
         }
     }
     if (graceful_exit_requested) {
-        return WARMUP_GRACEFUL_EXIT_REQUESTED;
+        *reason = graceful_exit_reason();
+        return WARMUP_STOP_REQUESTED;
     }
 
-    if (last_input_poll.id != 0U) {
-        inkboy_profile_timer_stop(last_input_poll);
+    if (input_gap_timer.id != 0U) {
+        inkboy_profile_timer_stop(input_gap_timer);
     }
-    last_input_poll.id = 0U;
+    input_gap_timer.id = 0U;
     inkboy_profile_begin_gameplay();
     *reason = "presentation-error";
     if (!inkboy_libretro_frame(runtime->emulator, &frame) ||
@@ -196,26 +199,27 @@ static enum warmup_result warmup_runtime(struct inkboy_runtime *runtime,
     }
 
     *reason = "clock-error";
-    if (clock_gettime(CLOCK_MONOTONIC, &clock->next_run) != 0) {
+    if (clock_gettime(CLOCK_MONOTONIC, &clock->next_emulation_run) != 0) {
         return WARMUP_ERROR;
     }
-    clock->last_presentation_attempt = inkboy_timespec_to_ns(&clock->next_run);
+    clock->last_presentation_attempt_ns =
+        inkboy_timespec_to_ns(&clock->next_emulation_run);
     clock->emulation_fps = inkboy_libretro_fps(runtime->emulator);
-    clock->next_display = clock->last_presentation_attempt + clock->display_period;
-    last_input_poll.id = 0U;
+    clock->next_display_ns = clock->last_presentation_attempt_ns +
+                             clock->display_period_ns;
+    input_gap_timer.id = 0U;
     return WARMUP_READY;
 }
 
 static int present_latest_frame(struct inkboy_runtime *runtime,
                                 struct gameplay_clock *clock,
-                                struct timespec *next_run,
-                                struct timespec *now,
+                                struct timespec now,
                                 const char **reason)
 {
     struct inkboy_video_frame frame;
-    uint64_t present_start_ns = inkboy_timespec_to_ns(now);
-    uint64_t interval_ns = present_start_ns - clock->last_presentation_attempt;
-    uint64_t deadline_late_ns = present_start_ns - clock->next_display;
+    uint64_t present_start_ns = inkboy_timespec_to_ns(&now);
+    uint64_t interval_ns = present_start_ns - clock->last_presentation_attempt_ns;
+    uint64_t deadline_late_ns = present_start_ns - clock->next_display_ns;
     enum inkboy_present_result presented = INKBOY_PRESENT_UNCHANGED;
     bool frame_available = inkboy_libretro_frame(runtime->emulator, &frame);
     uint64_t now_ns;
@@ -226,14 +230,15 @@ static int present_latest_frame(struct inkboy_runtime *runtime,
             *reason = "presentation-error";
             return -1;
         }
-        poll_after_cleanup = presented == INKBOY_PRESENT_CLEANUP ||
-                             presented == INKBOY_PRESENT_INITIAL;
+        classify_next_input_gap_as_cleanup =
+            presented == INKBOY_PRESENT_CLEANUP ||
+            presented == INKBOY_PRESENT_INITIAL;
     }
-    if (clock_gettime(CLOCK_MONOTONIC, now) != 0) {
+    if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) {
         *reason = "clock-error";
         return -1;
     }
-    now_ns = inkboy_timespec_to_ns(now);
+    now_ns = inkboy_timespec_to_ns(&now);
     fprintf(stdout, "runtime event=presentation result=%s"
             " since_previous_attempt_ms=%.3f deadline_late_ms=%.3f"
             " presentation_call_ms=%.3f\n",
@@ -243,12 +248,12 @@ static int present_latest_frame(struct inkboy_runtime *runtime,
             frame_available ? "unchanged" : "no_frame",
             interval_ns / 1000000.0, deadline_late_ns / 1000000.0,
             (now_ns - present_start_ns) / 1000000.0);
-    clock->last_presentation_attempt = present_start_ns;
-    clock->next_display = inkboy_next_deadline(clock->next_display, now_ns,
-                                                clock->display_period);
+    clock->last_presentation_attempt_ns = present_start_ns;
+    clock->next_display_ns = inkboy_next_deadline(clock->next_display_ns, now_ns,
+                                                  clock->display_period_ns);
     /* Drop emulation debt too; no burst after a blocking refresh. */
-    if (inkboy_timespec_before(*next_run, *now)) {
-        *next_run = *now;
+    if (inkboy_timespec_before(clock->next_emulation_run, now)) {
+        clock->next_emulation_run = now;
     }
     return 0;
 }
@@ -273,28 +278,27 @@ static int run_game_loop(struct inkboy_runtime *runtime,
             *reason = "emulation-error";
             return EXIT_FAILURE;
         }
-        clock->next_run = inkboy_timespec_add_seconds(
-            clock->next_run, 1.0 / clock->emulation_fps);
+        clock->next_emulation_run = inkboy_timespec_add_seconds(
+            clock->next_emulation_run, 1.0 / clock->emulation_fps);
         if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) {
             *reason = "clock-error";
             return EXIT_FAILURE;
         }
-        if (inkboy_timespec_before(clock->next_run, now)) {
-            clock->next_run = now;
+        if (inkboy_timespec_before(clock->next_emulation_run, now)) {
+            clock->next_emulation_run = now;
         } else {
-            sleep_until(clock->next_run);
+            sleep_until(clock->next_emulation_run);
         }
         if (graceful_exit_requested) {
             break;
         }
-        /* Sleep and synchronous presentation can both invalidate prior time. */
+        /* Sleep and refresh completion waits can both invalidate prior time. */
         if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) {
             *reason = "clock-error";
             return EXIT_FAILURE;
         }
-        if (inkboy_timespec_to_ns(&now) >= clock->next_display &&
-            present_latest_frame(runtime, clock, &clock->next_run, &now,
-                                 reason) != 0) {
+        if (inkboy_timespec_to_ns(&now) >= clock->next_display_ns &&
+            present_latest_frame(runtime, clock, now, reason) != 0) {
             return EXIT_FAILURE;
         }
     }
@@ -332,21 +336,17 @@ int main(void)
 
     graceful_exit_requested = 0;
     exit_signal_number = 0;
-    if (last_input_poll.id != 0U) inkboy_profile_timer_stop(last_input_poll);
-    last_input_poll.id = 0U;
-    poll_after_cleanup = false;
+    if (input_gap_timer.id != 0U) inkboy_profile_timer_stop(input_gap_timer);
+    input_gap_timer.id = 0U;
+    classify_next_input_gap_as_cleanup = false;
     inkboy_profile_startup();
-    clock.display_period = UINT64_C(1000000000) / policy.fps;
+    clock.display_period_ns = UINT64_C(1000000000) / policy.fps;
     if (initialize_runtime(&runtime) == 0) {
         warmup_result = warmup_runtime(&runtime, &clock, &reason);
         if (warmup_result == WARMUP_READY) {
             result = run_game_loop(&runtime, &clock, &reason);
-        } else if (warmup_result == WARMUP_EXIT_REQUESTED ||
-                   warmup_result == WARMUP_GRACEFUL_EXIT_REQUESTED) {
+        } else if (warmup_result == WARMUP_STOP_REQUESTED) {
             result = EXIT_SUCCESS;
-            if (warmup_result == WARMUP_GRACEFUL_EXIT_REQUESTED) {
-                reason = graceful_exit_reason();
-            }
         }
     }
     return close_runtime(&runtime, result, reason);

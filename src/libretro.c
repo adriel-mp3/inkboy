@@ -50,13 +50,14 @@ struct inkboy_libretro {
     unsigned width;
     unsigned height;
     size_t pitch;
-    bool frame_ready;
-    bool frame_pending;
+    bool frame_ready; /* A non-duplicate frame arrived during the latest run. */
+    bool frame_pending; /* A produced frame has not yet been selected for display. */
     struct inkboy_profile_timer control_change_timer;
     double fps;
     uint16_t buttons;
 };
 
+/* Libretro callbacks have no userdata, so the adapter supports one active core. */
 static struct inkboy_libretro *active_emulator;
 
 static void core_log(enum retro_log_level level, const char *format, ...)
@@ -106,8 +107,7 @@ static void video_refresh(const void *data, unsigned width, unsigned height,
         return;
     }
     if (active_emulator == NULL || width == 0U ||
-        height == 0U || width > 1024U || height > 1024U ||
-        (size_t)height > SIZE_MAX / ((size_t)width * sizeof(uint32_t))) {
+        height == 0U || width > 1024U || height > 1024U) {
         inkboy_profile_timer_cancel(timer);
         inkboy_profile_frame_received(INKBOY_PROFILE_FRAME_INVALID);
         return;

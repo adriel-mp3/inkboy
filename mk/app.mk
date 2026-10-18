@@ -27,7 +27,11 @@ $(OUTPUT): $(APP_OBJECTS) build/libfbink-$(TARGET).a
 	$(CC) $(COMMON_CFLAGS) -D_POSIX_C_SOURCE=200809L -Isrc -I$(FBINK_DIR) $(APP_OBJECTS) \
 		build/libfbink-$(TARGET).a -ldl -lm -o $@
 
-inspect: $(INSPECT_BINARY)
+inspect: docker-image
+	$(call DOCKER_MAKE,$(DOCKER_TOOLCHAIN_VOLUME),TARGET=kindle KINDLE_TC=/opt/x-tools/arm-kindlehf-linux-gnueabihf KINDLE_SYSROOT=/opt/x-tools/arm-kindlehf-linux-gnueabihf/arm-kindlehf-linux-gnueabihf/sysroot KINDLE_CC=/opt/x-tools/arm-kindlehf-linux-gnueabihf/bin/arm-kindlehf-linux-gnueabihf-gcc INSPECT_BINARY=$(INSPECT_BINARY) inspect-local)
+
+.PHONY: inspect-local
+inspect-local: $(INSPECT_BINARY)
 	file $(INSPECT_BINARY)
 	readelf -l $(INSPECT_BINARY) | grep 'Requesting program interpreter' || true
 	readelf -d $(INSPECT_BINARY) | grep 'NEEDED' || true

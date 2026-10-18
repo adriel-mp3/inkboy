@@ -1,12 +1,24 @@
 # TASK-010 — Presentation fluidity experiments
 
-Archived experiment record. The old matrix builder and device launcher were
-removed; the current Make profiling workflow builds and runs one selected
-profile at a time.
+Archived experiment record. The matrix builder, presentation profile options,
+and device launcher described here were removed after the experiment. Use the
+fixed production workflow in the README for current builds and deployments.
 
 Date: 2026-10-16. Status: implementation and local validation complete;
 PW5 screening found no qualifying 2/4 FPS candidate. Further testing stopped
-at the user’s request. No candidate adopted; the fluidity objective remains open.
+at the user’s request. No candidate passed the measured acceptance gates in
+this experiment; the fluidity objective remains open.
+
+## Decision after the experiment
+
+The experiment's recommendation below records the state when testing stopped.
+On 2026-10-17, the user requested making 2 FPS regional GC16 with a 60-second
+flashing cleanup the standard build policy. The source default used that policy;
+the build-time profile option has since been removed. This later choice did not change the
+experiment's measurements: neither 2 FPS candidate met its acceptance gates,
+and the complete physical acceptance matrix for the current default remains
+unfinished. The standard policy describes what the build does; it is not a
+claim that the candidate passed those gates.
 
 ## Implementation and preserved baseline
 
@@ -66,7 +78,8 @@ host libc artifacts. It builds all profiles under `build/task010/host/`.
 under `build/task010-deploy/`; it performs no network transfer. Objects are
 isolated by platform and profile. Files are:
 
-- `inkboy-baseline`: current conservative 1 FPS flashing full-screen policy.
+- `inkboy-baseline`: historical 1 FPS flashing full-screen policy used during
+  this experiment.
 - `inkboy-{auto,gc16}-{1,2,4,8}-{30,60}`: ordinary waveform, display FPS and
   cleanup interval in seconds. Building 8 FPS does not authorize skipping the
   physical four-FPS gate.
@@ -227,12 +240,14 @@ and static images intentionally suppress updates. Thus the low normal FPS
 values cannot alone establish the sustainable cadence in continuously moving
 scenes, and CPU/emulation differences are not controlled causal estimates.
 
-The ordinary poll gaps independently reject every candidate: the normal refresh
-wait alone exceeds the 300 ms polling limit in this synchronous design. Both
+The ordinary poll gaps independently reject every candidate in the synchronous
+screening build: the normal refresh wait alone exceeds the 300 ms polling limit.
+The current runtime later deferred waits for ordinary regional updates; these
+screening measurements predate that change. Both
 2 FPS modes also reported below the 1.8 presentation FPS and 95% baseline
 emulation screening thresholds. Neither mode is eligible for the p95 tie-break
 or default adoption. Flash suppression improved the appearance but did not
-remove the dominant synchronous blocking delay.
+remove the dominant blocking delay measured in those runs.
 
 At the user’s request, further testing stopped. The last 4 FPS run had already
 completed and restored through the API. The next batch had not started:
@@ -244,10 +259,11 @@ remain historical evidence. Host tests cover those code paths but are not
 physical validation. No additional device experiment is scheduled.
 
 Raw logs: `build/task010/{baseline,auto-1,gc16-1,auto-2,gc16-2,auto-4,gc16-4}-screening.log`.
-Consolidated data: `build/task010/screening-results.json`. Keep the default
-1 FPS flashing full-screen policy, preserve milestone statuses, and leave the
-fluidity objective open. A future approach must address normal refresh blocking
-before repeating an acceptance campaign.
+Consolidated data: `build/task010/screening-results.json`. At the time this
+experiment closed, its recommendation was to keep the 1 FPS flashing
+full-screen policy, preserve milestone statuses, and leave the fluidity
+objective open. The later user-requested policy change is documented above. A
+future acceptance campaign must address normal refresh blocking first.
 
 ## Retained protocol for future work (not executed beyond screening)
 

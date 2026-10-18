@@ -76,7 +76,6 @@ device run:
 ```sh
 make test
 make libretro-runtime-test
-make libretro-scale-test
 make host
 make inspect
 git diff --check

@@ -1,10 +1,11 @@
 # TASK-010 — Reduce flashing and improve gameplay fluidity
 
 - Milestone: M4 — Continuous rendering and performance research
-- Status: In progress — implementation validated; PW5 screening found no qualifying 2/4 FPS policy; further tests stopped at the user’s request
+- Status: Closed on 2026-10-18 at the user's direction. Current implementation was revalidated; the original fluidity acceptance criteria remain unmet, so M4 remains open.
 - Dependency: TASK-009, including its uncommitted runtime fixes and evidence
-- Coordination: Single-threaded execution, synchronous completion, no refresh queue.
-  Preserve TASK-008/009 binaries, manifests and deployments.
+- Coordination: Run one device session at a time; preserve TASK-008/009
+  binaries, manifests and deployments. Runtime execution remains single-threaded
+  and has no refresh queue.
 
 ## Objective
 
@@ -28,7 +29,10 @@ speed separately.
   holding the cleanup waveform constant across normal waveform comparisons.
 - Compare 60-second and 30-second cleanups, preferring 60 when legible. Identical
   scaled grayscale bytes skip drawing/refresh but cannot suppress a due cleanup.
-  The comparison cache advances only after successful synchronous completion.
+  In synchronous profiles, the comparison cache advances after successful
+  completion. In the current standard runtime, ordinary regional updates defer
+  the completion wait; their cache advances after successful submission, and
+  pending work is waited before a full redraw or cleanup.
 - Re-read monotonic time after sleep and presentation. Advance expired display
   deadlines to the next future slot and discard emulation debt after refresh;
   never issue catch-up bursts.
@@ -103,13 +107,22 @@ normal updates/s and 13.98–14.30 emulation FPS against the 18.42 FPS baseline.
 Scene/interaction differences and identical-image skips mean these are screening
 results, not the prescribed controlled motion confirmation.
 
-The user requested an end to testing. The active 4 FPS session had already
-terminated successfully; the queued 30-second cleanup/shutdown tests never
-started. No 8 FPS, three-pair confirmation or five-minute session was run.
-Thirty-second cleanup is host-tested but physically unverified. Candidate-specific
-EXIT, other signals and touchscreen-failure validation remain unperformed;
-TASK-009’s existing evidence is preserved and is not relabeled as TASK-010 proof.
-The user subsequently selected 2 FPS regional GC16 as the standard policy, with
-a 60-second flashing AUTO cleanup. The measured device cadence and fluidity
-optimization remain open. The milestone is not complete. Detailed data and
-limitations are in the experiment report.
+At the user's direction on 2026-10-18, the production tree was simplified to
+one fixed presentation policy and the unused profile matrix and standalone
+benchmark sources were removed. Host tests, host and Kindle builds, and the
+Libretro runtime smoke test passed. A current-build device smoke run is recorded
+below. The original controlled-motion comparisons, candidate matrix, EXIT and
+fault injection campaign were not completed; no candidate is approved and M4
+remains open. The task is closed as a scoped decision, not as a claim that its
+fluidity acceptance criteria passed. Historical measurements and their limits
+remain in the experiment report.
+
+## Final current-build device smoke — 2026-10-18
+
+Run `task010-final-20261018a` lasted 79.27 seconds on the PW5. The user
+confirmed that the game appeared and the screen was legible. The log records 65
+normal submissions, one 60-second AUTO cleanup, zero refresh failures, and
+successful full restoration after SIGTERM. Emulation averaged 55.65 FPS,
+normal submissions 0.82 FPS, the initial completion wait 371.5 ms and the
+cleanup wait 366.9 ms. This smoke run did not use controlled motion and does
+not meet or replace the original candidate acceptance campaign.

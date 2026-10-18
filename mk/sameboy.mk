@@ -21,11 +21,3 @@ $(SAMEBOY_CORE_KINDLE):
 	$(MAKE) MAKEOVERRIDES= -C $(SAMEBOY_WORK_KINDLE) libretro platform=unix-armv7-hardfloat-neon CC="$(KINDLE_CC)" AR="$(KINDLE_TC)/bin/arm-kindlehf-linux-gnueabihf-ar" BIN=$(abspath build/sameboy-work-kindle)
 	@mkdir -p $(dir $@)
 	cp $(SAMEBOY_WORK_KINDLE)/sameboy_libretro.so $@
-
-$(LIBRETRO_SCALE_TEST): $(LIBRETRO_SCALE_TEST_SOURCE) $(LIBRETRO_LIVE_SOURCE) build/libfbink-host.a
-	@mkdir -p $(BUILD_DIR)
-	$(HOST_CC) $(COMMON_CFLAGS) -D_POSIX_C_SOURCE=200809L \
-		-I$(SAMEBOY_DIR)/libretro -I$(FBINK_DIR) $< build/libfbink-host.a -ldl -lm -o $@
-
-libretro-scale-test: $(LIBRETRO_SCALE_TEST)
-	@$(LIBRETRO_SCALE_TEST)
