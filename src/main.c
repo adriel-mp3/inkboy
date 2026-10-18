@@ -84,7 +84,7 @@ static struct timespec add_seconds(struct timespec value, double seconds)
     return value;
 }
 
-static bool before(struct timespec left, struct timespec right)
+static bool timespec_before(struct timespec left, struct timespec right)
 {
     return left.tv_sec < right.tv_sec ||
            (left.tv_sec == right.tv_sec && left.tv_nsec < right.tv_nsec);
@@ -121,7 +121,7 @@ static void sleep_until(struct timespec deadline)
     struct timespec remaining;
 
     if (stop_signal || clock_gettime(CLOCK_MONOTONIC, &now) != 0 ||
-        !before(now, deadline)) {
+        !timespec_before(now, deadline)) {
         return;
     }
     remaining.tv_sec = deadline.tv_sec - now.tv_sec;
@@ -257,7 +257,7 @@ static int present_latest_frame(struct inkboy_runtime *runtime,
     clock->next_display = inkboy_next_deadline(clock->next_display, now_ns,
                                                 clock->display_period);
     /* Drop emulation debt too; no burst after a blocking refresh. */
-    if (before(*next_run, *now)) {
+    if (timespec_before(*next_run, *now)) {
         *next_run = *now;
     }
     return 0;
@@ -292,7 +292,7 @@ static int run_gameplay(struct inkboy_runtime *runtime,
             *reason = "clock-error";
             return EXIT_FAILURE;
         }
-        if (before(clock->next_run, now)) {
+        if (timespec_before(clock->next_run, now)) {
             clock->next_run = now;
         } else {
             sleep_until(clock->next_run);
