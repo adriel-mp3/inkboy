@@ -55,15 +55,13 @@ static void request_shutdown(int cause)
 static int install_shutdown_handlers(void)
 {
     struct sigaction action;
-    bool is_handlers_installed;
 
     memset(&action, 0, sizeof(action));
     action.sa_handler = request_shutdown;
-    is_handlers_installed = sigemptyset(&action.sa_mask) == 0 &&
-                            sigaction(SIGINT, &action, NULL) == 0 &&
-                            sigaction(SIGTERM, &action, NULL) == 0 &&
-                            sigaction(SIGHUP, &action, NULL) == 0;
-    if (!is_handlers_installed) {
+    if (sigemptyset(&action.sa_mask) != 0 ||
+        sigaction(SIGINT, &action, NULL) != 0 ||
+        sigaction(SIGTERM, &action, NULL) != 0 ||
+        sigaction(SIGHUP, &action, NULL) != 0) {
         return -1;
     }
     return 0;
