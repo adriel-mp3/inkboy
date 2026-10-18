@@ -240,9 +240,9 @@ static int present_latest_frame(struct inkboy_runtime *runtime,
     return 0;
 }
 
-static int run_gameplay(struct inkboy_runtime *runtime,
-                        struct gameplay_clock *clock,
-                        const char **reason)
+static int run_game_loop(struct inkboy_runtime *runtime,
+                         struct gameplay_clock *clock,
+                         const char **reason)
 {
     while (!graceful_exit_requested) {
         struct timespec now;
@@ -330,7 +330,7 @@ int main(void)
     if (initialize_runtime(&runtime) == 0) {
         warmup_result = warmup_runtime(&runtime, &clock, &reason);
         if (warmup_result == WARMUP_READY) {
-            result = run_gameplay(&runtime, &clock, &reason);
+            result = run_game_loop(&runtime, &clock, &reason);
         } else if (warmup_result == WARMUP_EXIT_REQUESTED ||
                    warmup_result == WARMUP_GRACEFUL_EXIT_REQUESTED) {
             result = EXIT_SUCCESS;
