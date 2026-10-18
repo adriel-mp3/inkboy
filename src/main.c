@@ -52,7 +52,7 @@ static void request_shutdown(int cause)
     shutdown_requested = 1;
 }
 
-static int install_shutdown_handlers(void)
+static int configure_graceful_exit(void)
 {
     struct sigaction action;
 
@@ -125,8 +125,8 @@ static int initialize_runtime(struct inkboy_runtime *runtime)
 {
     fprintf(stdout, "runtime core=%s rom=\"%s\" warmup_frames=%u\n",
             INKBOY_CORE_PATH, INKBOY_ROM_PATH, WARMUP_FRAMES);
-    if (install_shutdown_handlers() != 0) {
-        fprintf(stderr, "inkboy: unable to install signal handlers: %s\n",
+    if (configure_graceful_exit() != 0) {
+        fprintf(stderr, "inkboy: unable to configure graceful exit: %s\n",
                 strerror(errno));
         return -1;
     }
